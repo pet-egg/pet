@@ -30,6 +30,8 @@ final class PetView: NSView {
     private var dragging = false
     private var dragDirection: PetDragDirection?
     private var hovering = false
+    /// 호버 중에만 뜨는 상세 문구. 그리기는 XPDetailWindow 가 한다.
+    private(set) var progressDetail = ""
     private var dragBaselineX: CGFloat = 0
     private var dragOffset: CGPoint = .zero
     private var didDragThisGesture = false
@@ -39,6 +41,8 @@ final class PetView: NSView {
     /// does not replace the waving motion with the hover jump.
     private var speaking = false
     private var speakingTimer: Timer?
+    /// 깨우기 연출이 끝난 뒤 말하기로 넘어가는 예약. 도중에 다시 클릭하면 취소한다.
+    private var wakeWorkItem: DispatchWorkItem?
 
     /// Motion pinned from the right-click menu. While set it overrides the
     /// agent state entirely, so any motion can be inspected on demand; picking
@@ -66,6 +70,9 @@ final class PetView: NSView {
     /// Fires once each time the pointer enters the pet — the "you noticed it"
     /// gesture AppDelegate uses to dismiss a lingering review/헤롱헤롱 state.
     var onHoverEnter: (() -> Void)?
+    /// 호버가 켜지고 꺼질 때. 경험치 상세 창을 여닫는 데 쓴다 — 그 문구는 펫 창보다
+    /// 길어서 별도 창(XPDetailWindow)에 그린다.
+    var onHoverChanged: ((Bool) -> Void)?
 
     init(spriteSheet: SpriteSheet) {
         self.spriteSheet = spriteSheet
@@ -99,12 +106,14 @@ final class PetView: NSView {
 
     // MARK: - Public: XP bar
 
-    /// Updates the XP bar fill (`percent`, 0...1) and its color (`stage`).
-    func setProgress(percent: Double, stage: Int) {
+    /// Updates the XP bar fill (`percent`, 0...1), its color (`stage`), and the
+    /// text shown while hovering (`detail`, 예: "EXP 100,000 / 200,000,000 - 0.05%").
+    func setProgress(percent: Double, stage: Int, detail: String) {
         let clamped = min(1, max(0, percent))
-        guard clamped != progressPercent || stage != progressStage else { return }
+        guard clamped != progressPercent || stage != progressStage || detail != progressDetail else { return }
         progressPercent = clamped
         progressStage = stage
+        progressDetail = detail
         needsDisplay = true
     }
 
@@ -158,6 +167,30 @@ final class PetView: NSView {
     /// 브리핑 말풍선이 떠 있는 시간. 여러 세션을 훑어 읽을 수 있어야 한다.
     static let briefingDuration: TimeInterval = 30
 
+    /// 자고 있으면 먼저 깨우고 나서 말한다.
+    ///
+    /// 잠든 채로 말풍선만 뜨면 깨어난 느낌이 없어서, 잠듦 상태일 때만 점프 모션을
+    /// 한 번 재생하고 그게 끝나면 말한다. 전용 "기지개" 행이 없어 jumping 을 쓴다 —
+    /// 화들짝 일어나는 것으로 읽힌다. 자고 있지 않으면 곧장 말한다.
+    private func speakWaking(_ text: String) {
+        wakeWorkItem?.cancel()
+        wakeWorkItem = nil
+
+        guard baseAnimation == .idle, playOnce(.jumping) else {
+            speak(text)
+            return
+        }
+        // 점프 한 바퀴가 끝나는 시점에 말하기로 넘긴다. 길이는 매니페스트에서 읽으므로
+        // 프레임 타이밍을 바꿔도 따라온다.
+        let ms = spriteSheet.resolvedAnimation(for: .jumping)?.durationsMs.reduce(0, +) ?? 900
+        let work = DispatchWorkItem { [weak self] in
+            self?.wakeWorkItem = nil
+            self?.speak(text)
+        }
+        wakeWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + ms / 1000, execute: work)
+    }
+
     private func speak(_ text: String) {
         let duration = Self.briefingDuration
         speaking = true
@@ -172,6 +205,8 @@ final class PetView: NSView {
     }
 
     private func stopSpeaking() {
+        wakeWorkItem?.cancel()
+        wakeWorkItem = nil
         speakingTimer?.invalidate()
         speakingTimer = nil
         guard speaking else { return }
@@ -245,7 +280,7 @@ final class PetView: NSView {
         pinnedAnimation = nil
         stopSpeaking()
         if let text = onClick?(), !text.isEmpty {
-            speak(text)
+            speakWaking(text)
         }
     }
 
@@ -417,12 +452,14 @@ final class PetView: NSView {
     override func mouseEntered(with event: NSEvent) {
         hovering = true
         onHoverEnter?()
+        onHoverChanged?(true)
         applyDisplayAnimation()
         if !barAlwaysVisible { needsDisplay = true } // reveal hover-only bar
     }
 
     override func mouseExited(with event: NSEvent) {
         hovering = false
+        onHoverChanged?(false)
         applyDisplayAnimation()
         if !barAlwaysVisible { needsDisplay = true } // hide hover-only bar again
     }
@@ -471,7 +508,7 @@ final class PetView: NSView {
             if speaking {
                 stopSpeaking()
             } else if let text = onClick?(), !text.isEmpty {
-                speak(text)
+                speakWaking(text)
                 return
             }
         }

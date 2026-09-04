@@ -15,7 +15,20 @@ final class FlameWindow: NSPanel {
 
     /// 화면에 찍히는 불길의 최대 길이 = 펫 창 너비 × 이 배수.
     /// 하나만 만지면 되도록 여기 모아 둔다.
-    static let lengthMultiplier: CGFloat = 3.75
+    /// 화면에 찍히는 불길의 최대 길이 = 펫 창 너비 × 이 배수. 진화 단계마다 다르다.
+    ///
+    /// 창 너비가 이미 단계에 따라 커지므로 배수를 고정하면 길이도 따라 커지긴 한다.
+    /// 하지만 그러면 **펫 대비 비율**이 단계와 무관하게 일정해서, 기본형에서도 자기
+    /// 키의 5배가 넘는 불길이 나갔다. 어린 개체는 덜 뿜는 편이 자연스럽다.
+    ///
+    /// 최종 단계 값(3.75 → 675pt)은 그대로 두고 아래 단계만 줄였다.
+    static func lengthMultiplier(forStage stage: Int) -> CGFloat {
+        switch stage {
+        case 0:  return 2.0
+        case 1:  return 2.7
+        default: return 3.75
+        }
+    }
 
     init(image: NSImage) {
         super.init(

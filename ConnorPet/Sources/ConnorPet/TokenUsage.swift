@@ -111,9 +111,26 @@ enum XPModel {
     /// 최종 진화 시점이 되게 한다.
     static var maxTokens: Double { stageTokens.last ?? 1 }
 
+    /// 다음 진화까지의 진행 상황. 바와 호버 문구가 같은 값을 쓰도록 한곳에서 만든다.
+    ///
+    /// 기준이 **다음 진화 지점**인 이유: 예전에는 바가 최종 진화(5억) 기준이라
+    /// 1단계를 갓 지난 시점에도 40%에 머물러 있어서, 다음 진화가 얼마나 남았는지
+    /// 읽히지 않았다. 단계가 오를 때마다 바가 다시 차오르는 편이 알아보기 쉽다.
+    struct Progress {
+        let percent: Double      // 0...1, 다음 진화 지점 기준
+        let tokens: Double       // 지금까지 쌓은 토큰
+        let target: Double?      // 다음 진화 지점. 최종 단계면 nil
+    }
+
+    static func progress(tokens: Double) -> Progress {
+        guard let target = stageTokens.first(where: { tokens < $0 }) else {
+            return Progress(percent: 1, tokens: tokens, target: nil)
+        }
+        return Progress(percent: min(1, max(0, tokens / target)), tokens: tokens, target: target)
+    }
+
     static func percent(tokens: Double) -> Double {
-        guard maxTokens > 0 else { return 0 }
-        return min(1, max(0, tokens / maxTokens))
+        progress(tokens: tokens).percent
     }
 
     /// 0 = 기본형, 1 = 1차 진화, 2 = 2차 진화.

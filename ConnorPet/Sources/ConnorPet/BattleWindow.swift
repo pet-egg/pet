@@ -280,7 +280,7 @@ final class BattleView: NSView {
         let defender = attacker.opponent
 
         // HP to show (snap once a landing shot connects).
-        let connected = !round.dodged && f >= hitAt
+        let connected = !round.missed && f >= hitAt
         let hp = hpTimeline[min(connected ? roundIndex + 1 : roundIndex, hpTimeline.count - 1)]
         let myHP = myRole == .challenger ? hp.challenger : hp.accepter
         let oppHP = myRole == .challenger ? hp.accepter : hp.challenger
@@ -288,7 +288,7 @@ final class BattleView: NSView {
         if f < cutAt {
             drawFireScene(attacker: attacker, f: f)
         } else {
-            drawImpactScene(attacker: attacker, defender: defender, f: f, dodged: round.dodged)
+            drawImpactScene(attacker: attacker, defender: defender, f: f, dodged: round.missed)
         }
 
         drawTopHUD(myHP: myHP, oppHP: oppHP)

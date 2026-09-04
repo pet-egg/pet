@@ -20,6 +20,11 @@ struct BattleRound: Equatable {
     let attacker: BattleRole
     let damage: Int
     let dodged: Bool
+    /// 반격 — 회피처럼 피해가 0 이지만, 막아 낸 쪽이 **다음 자기 차례에 두 발**을 쏜다.
+    var countered: Bool = false
+
+    /// 맞지 않은 공격. 회피든 반격이든 화면에서는 똑같이 빗나가게 그린다.
+    var missed: Bool { dodged || countered }
 }
 
 /// The full deterministic result of one battle. `rounds` is the blow-by-blow
@@ -57,29 +62,70 @@ struct DeterministicRNG {
     }
 }
 
-/// Simulate a full battle from `seed`. Attacker alternates each round (classic
-/// Digimon back-and-forth). Each shot has a ~25% chance the defender dodges
-/// (turns away, hops back — no damage); otherwise it lands for 1–2. Both start
-/// at `startHP`; the battle ends the instant one side hits 0. A dodge never
-/// ends the battle, so the final round is always a landing hit.
-/// Deterministic: same seed in → same `BattleOutcome` out, on any machine.
-func simulateBattle(seed: UInt64, startHP: Int = 5) -> BattleOutcome {
+/// 펫의 성장 상태를 0...1 하나로 압축한 "파워".
+///
+/// 1.0 은 **최종 진화 + 경험치 만렙**이고, 그 상태면 파워 0 인 상대를 한 방에 눕힌다
+/// (아래 damage 식에서 보너스가 startHP-1 이 되어 기본 굴림 1~2 를 더하면 HP 를 넘는다).
+/// 진화 단계는 곱연산으로 얹는다 — 1단계 +15%, 2단계 +30%.
+func battlePower(tokens: Double, stage: Int) -> Double {
+    let xp = min(1, max(0, tokens / XPModel.maxTokens))
+    let stageMultiplier: Double = [1.0, 1.15, 1.30][min(max(stage, 0), 2)]
+    // 최대치(경험치 만렙 × 2단계)가 정확히 1.0 이 되도록 나눠 준다.
+    return min(1, xp * stageMultiplier / 1.30)
+}
+
+/// 회피 확률(%). 이 구간에 들어오면 피해 0.
+private let dodgePercent = 10
+/// 반격 확률(%). 회피 구간 **바로 다음** 구간이라 둘은 겹치지 않는다.
+private let counterPercent = 5
+
+/// Simulate a full battle from `seed`. 기본은 한 대씩 주고받는 교대 공격이다.
+///
+/// 한 발마다 `dodgePercent`% 로 회피(피해 0), 그 다음 `counterPercent`% 로 반격이
+/// 난다. 반격은 피해를 막을 뿐 아니라 **막아 낸 쪽이 다음 자기 차례에 두 발**을 쏜다.
+/// 맞으면 기본 1~2 에 공격자의 파워 보너스가 더해진다.
+///
+/// 회피도 반격도 전투를 끝내지 않으므로 마지막 라운드는 항상 적중이다.
+/// Deterministic: same seed + same powers in → same `BattleOutcome` out, on any machine.
+func simulateBattle(seed: UInt64,
+                    powers: [BattleRole: Double] = [.challenger: 0, .accepter: 0],
+                    startHP: Int = 5) -> BattleOutcome {
     var rng = DeterministicRNG(seed: seed)
     var hp: [BattleRole: Int] = [.challenger: startHP, .accepter: startHP]
     var rounds: [BattleRound] = []
+    /// 반격에 성공해서 다음 차례에 두 발을 쏠 권리를 가진 쪽.
+    var doubleShot: [BattleRole: Bool] = [.challenger: false, .accepter: false]
 
     // Coin-flip who strikes first, then strictly alternate.
     var attacker: BattleRole = rng.int(in: 0...1) == 0 ? .challenger : .accepter
 
     // The `< 200` guard is a pure safety net against a logic bug looping forever;
-    // with 1–2 damage on a few HP a real battle resolves in a handful of rounds.
+    // with a few HP a real battle resolves in a handful of rounds.
     while hp[.challenger]! > 0 && hp[.accepter]! > 0 && rounds.count < 200 {
-        // ~25% dodge — deterministic from the seed so both screens miss together.
-        let dodged = rng.int(in: 0...99) < 25
-        let damage = dodged ? 0 : rng.int(in: 1...2)
         let target = attacker.opponent
-        if !dodged { hp[target]! -= damage }
-        rounds.append(BattleRound(attacker: attacker, damage: damage, dodged: dodged))
+        let shots = doubleShot[attacker]! ? 2 : 1
+        doubleShot[attacker] = false
+
+        for _ in 0..<shots {
+            guard hp[target]! > 0 else { break }
+            // 한 번의 굴림으로 회피/반격/적중을 가른다 — 두 번 굴리면 같은 시드에서도
+            // 소비하는 난수 개수가 달라져 재현이 깨진다.
+            let roll = rng.int(in: 0...99)
+            let dodged = roll < dodgePercent
+            let countered = !dodged && roll < dodgePercent + counterPercent
+
+            var damage = 0
+            if !dodged && !countered {
+                // 기존 산정식(1~2)은 그대로 두고 성장 보너스를 더한다. 파워 1.0 이면
+                // 보너스가 startHP-1 이라 어떤 굴림이든 한 방에 끝난다.
+                let bonus = Int((Double(startHP - 1) * (powers[attacker] ?? 0)).rounded())
+                damage = rng.int(in: 1...2) + bonus
+                hp[target]! -= damage
+            }
+            if countered { doubleShot[target] = true }
+            rounds.append(BattleRound(attacker: attacker, damage: damage,
+                                      dodged: dodged, countered: countered))
+        }
         attacker = target
     }
 

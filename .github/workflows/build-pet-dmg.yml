@@ -63,16 +63,13 @@ jobs:
           cd ConnorPet
           swift build -c release
 
-      - name: Generate app icon from the pet's sprite
-        env:
-          PET_SLUG: ${{ steps.pet.outputs.slug }}
+      - name: Generate app icon
         run: |
           cd ConnorPet
-          python3 -m pip install --quiet --break-system-packages pillow
-          # pet.json 기준 frame은 200x200, "running" 애니메이션은 row 7(모든 펫 공통)로
-          # 유일하게 상태이상 틴트(얼음/헤롱헤롱/잠듦 채도저하)가 안 입혀진 원색 그대로의
-          # 로우다 — idle(row 0)을 쓰면 잠듦 상태의 탈색된 스프라이트가 아이콘이 된다.
-          python3 -c "import sys; from PIL import Image; Image.open(sys.argv[1]).convert('RGBA').crop((0, 1400, 200, 1600)).save('/tmp/icon_master.png')" "Sources/ConnorPet/Resources/pets/${PET_SLUG}/spritesheet.png"
+          # 아이콘은 assets/app-icon.png 하나로 고정한다. 예전에는 선택한 펫의
+          # 스프라이트를 잘라 썼는데, 프레임 크기가 펫마다 달라지면서(파이리 계열
+          # 진화형은 480) 고정 좌표 crop 이 엉뚱한 칸을 집게 됐다.
+          cp ../assets/app-icon.png /tmp/icon_master.png
 
           mkdir -p AppIcon.iconset
           for size in 16 32 128 256 512; do

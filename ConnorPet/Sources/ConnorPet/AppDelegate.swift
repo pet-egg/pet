@@ -6,6 +6,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var bubble: SpeechBubbleWindow?
     private var flame: FlameWindow?
+    private var xpDetailWindow: XPDetailWindow?
+    private var xpHovering = false
     private var flameAspect: CGFloat = 1.47
 
     // 브리핑 범위는 2단이다.
@@ -155,6 +157,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Self.saveOrigin(newOrigin)
             self?.bubble?.hide() // the bubble does not follow a drag; drop it
             self?.flame?.hide()  // 불길도 창을 따라오지 않는다
+            self?.xpDetailWindow?.hide()
         }
         view.onClick = { [weak self] in self?.briefingText() }
         view.onSpeak = { [weak self] text, duration in
@@ -176,7 +179,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 x: win.frame.minX + mouthInFrame.x * scale,
                 y: win.frame.maxY - mouthInFrame.y * scale
             )
-            let length = win.frame.width * FlameWindow.lengthMultiplier * grow
+            let length = win.frame.width * FlameWindow.lengthMultiplier(forStage: self.currentStage) * grow
             flame.show(mouth: mouth, length: length, aspect: self.flameAspect)
             if ProcessInfo.processInfo.environment["CONNORPET_DEBUG"] != nil {
                 FileHandle.standardError.write("[connor-pet] 이펙트 grow=\(grow) 길이=\(Int(length))pt\n".data(using: .utf8)!)
@@ -193,17 +196,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         view.onHoverEnter = { [weak self] in
             self?.watcher?.acknowledgeDone()
         }
+        view.onHoverChanged = { [weak self] on in
+            self?.xpHovering = on
+            self?.updateXPDetailWindow()
+        }
         win.contentView = view
         win.makeKeyAndOrderFront(nil)
 
         window = win
         petView = view
         bubble = SpeechBubbleWindow()
+        xpDetailWindow = XPDetailWindow()
         loadSkillEffect(for: sheet)
 
         setUpStatusItem()
 
-        selectedStatusSource = Self.savedStatusSource(fallback: Self.availableStatusSources[0])
+selectedStatusSource = Self.savedStatusSource(fallback: Self.availableStatusSources[0])
         startWatcher(for: selectedStatusSource)
 
         startBattleService()
@@ -260,6 +268,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         service.onBattleStart = { [weak self] myRole, outcome, oppName, oppPet in
             self?.presentBattle(myRole: myRole, outcome: outcome, opponentName: oppName, opponentPet: oppPet)
+        }
+        // 전투 계산에 들어갈 내 성장 파워. 지금 화면에 있는 펫 기준이다.
+        service.localPower = { [weak self] in
+            guard let self else { return 0 }
+            let tokens = self.petTokens[self.selectedPetSlug] ?? 0
+            let stage = self.evolutionEnabled ? XPModel.stage(tokens: tokens) : 0
+            return battlePower(tokens: tokens, stage: stage)
+        }
+        service.onStare = { [weak self] fromName, fromPet in
+            self?.presentStare(fromName: fromName, fromPet: fromPet)
         }
         service.start()
         battleService = service
@@ -337,6 +355,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Builds the "대전" item. Its submenu lists everyone currently discovered on
     /// the same Wi-Fi; picking one sends them a challenge. Shows a disabled
     /// placeholder while nobody's around yet.
+    /// 누가 노려봤을 때 뜨는 알림. 확인 버튼 하나뿐이다.
+    private func presentStare(fromName: String, fromPet: String) {
+        BattleDialog.info(title: "노려보기",
+                          message: "\(fromName)의 \(Self.koreanPetName(fromPet))가\n노려봅니다.")
+    }
+
+    /// 매니페스트의 표시 이름("파이리 (Charmander)")에서 한글 이름만 뽑는다.
+    /// 모르는 slug 면 slug 를 그대로 쓴다 — 상대가 우리에게 없는 펫을 쓸 수도 있다.
+    private static func koreanPetName(_ slug: String) -> String {
+        guard let sheet = try? loadSpriteSheet(slug: slug),
+              let display = sheet.manifest.displayName else { return slug }
+        return display.components(separatedBy: " (").first ?? display
+    }
+
+    private func makeStareMenuItem() -> NSMenuItem {
+        let item = NSMenuItem(title: "노려보기", action: nil, keyEquivalent: "")
+        let submenu = NSMenu()
+        if battlePeers.isEmpty {
+            let empty = NSMenuItem(title: "주변에 상대가 없어요", action: nil, keyEquivalent: "")
+            empty.isEnabled = false
+            submenu.addItem(empty)
+        } else {
+            for peer in battlePeers {
+                let sub = NSMenuItem(title: "\(peer.name) 노려보기", action: #selector(starePeer(_:)), keyEquivalent: "")
+                sub.target = self
+                sub.representedObject = peer.id
+                sub.isEnabled = true
+                submenu.addItem(sub)
+            }
+        }
+        item.submenu = submenu
+        return item
+    }
+
+    @objc private func starePeer(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String,
+              let peer = battlePeers.first(where: { $0.id == id }) else { return }
+        battleService?.stare(at: peer)
+    }
+
     private func makeBattleMenuItem() -> NSMenuItem {
         let battleItem = NSMenuItem(title: "대전", action: nil, keyEquivalent: "")
         let submenu = NSMenu()
@@ -535,6 +593,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(.separator())
         menu.addItem(makeBattleMenuItem())
+        menu.addItem(makeStareMenuItem())
 
         menu.addItem(.separator())
         let quitItem = NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q")
@@ -724,13 +783,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         applyStage()
     }
 
+    /// 호버 중이면 펫 아래에 상세 문구를 띄우고, 아니면 감춘다. 값이 갱신될 때마다
+    /// 다시 부르므로 떠 있는 동안에도 숫자가 실시간으로 바뀐다.
+    private func updateXPDetailWindow() {
+        guard xpHovering, let petFrame = window?.frame, let view = petView else {
+            xpDetailWindow?.hide()
+            return
+        }
+        xpDetailWindow?.show(text: view.progressDetail, below: petFrame)
+    }
+
+    /// 호버할 때 펫 아래에 뜨는 문구. "EXP 100,000 / 200,000,000 - 0.05%" 꼴이다.
+    /// 분모는 **다음 진화 지점**이라, 진화할 때마다 기준이 올라간다.
+    private static func xpDetail(tokens: Double) -> String {
+        let p = XPModel.progress(tokens: tokens)
+        let n = NumberFormatter()
+        n.numberStyle = .decimal
+        let now = n.string(from: NSNumber(value: Int(tokens))) ?? "0"
+        guard let target = p.target else { return "EXP \(now) - MAX" }
+        let goal = n.string(from: NSNumber(value: Int(target))) ?? "0"
+        let pct = p.percent * 100
+        // 초반에는 소수점 둘째 자리까지 보여야 움직이는 게 보인다.
+        let shown = pct >= 10 ? String(format: "%.1f", pct) : String(format: "%.2f", pct)
+        return "EXP \(now) / \(goal) - \(shown)%"
+    }
+
     /// Applies the current XP to the bar and evolution. When evolution is
     /// disabled the pet is pinned to its base form (stage 0) no matter how much
     /// XP it has. Called both on each poll and immediately after a menu change
     /// (thresholds / enable toggle) so edits take effect without waiting.
     private func applyStage() {
-        let stage = evolutionEnabled ? XPModel.stage(tokens: petTokens[selectedPetSlug] ?? 0) : 0
-        petView?.setProgress(percent: currentPercent, stage: stage)
+        let tokens = petTokens[selectedPetSlug] ?? 0
+        let stage = evolutionEnabled ? XPModel.stage(tokens: tokens) : 0
+        petView?.setProgress(percent: currentPercent, stage: stage,
+                             detail: Self.xpDetail(tokens: tokens))
+        updateXPDetailWindow()
         if stage != currentStage {
             currentStage = stage
             refreshDisplayedPet()
