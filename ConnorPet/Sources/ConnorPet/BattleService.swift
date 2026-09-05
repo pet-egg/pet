@@ -141,7 +141,11 @@ final class BattleService {
     private func startListener() {
         do {
             let params = NWParameters.tcp
-            params.includePeerToPeer = true
+            // 이 기능은 "같은 Wi-Fi"만 대상으로 한다(README). peer-to-peer(AWDL)를
+            // 켜면 무선 라디오를 시분할로 띄워 채널을 오가느라, 정작 필요 없는데도
+            // 발견·연결 핸드셰이크가 눈에 띄게 느려진다(수 초). LAN(인프라 Wi-Fi)
+            // 경로만 쓰도록 꺼 둔다 → 신청 즉시 연결이 붙는다.
+            params.includePeerToPeer = false
             let listener = try NWListener(using: params)
             listener.service = makeService()
             listener.newConnectionHandler = { [weak self] conn in
@@ -225,7 +229,9 @@ final class BattleService {
 
     private func startBrowser() {
         let params = NWParameters()
-        params.includePeerToPeer = true
+        // 발견도 같은 이유로 LAN 경로만 쓴다(위 startListener 참고). AWDL 브라우징은
+        // 결과가 늦게 뜨고 채널 홉핑 오버헤드가 붙어, 같은 Wi-Fi에선 순전히 손해다.
+        params.includePeerToPeer = false
         let browser = NWBrowser(for: .bonjourWithTXTRecord(type: battleServiceType, domain: nil), using: params)
         browser.browseResultsChangedHandler = { [weak self] results, _ in
             self?.updatePeers(from: results)
