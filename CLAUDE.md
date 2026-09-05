@@ -11,6 +11,7 @@ Orca 또는 Claude Code의 프로젝트/에이전트 상태에 반응하는 데�
   - `Sources/ConnorPet/ClaudeProcessActivity.swift` — Claude 프로세스 트리 CPU 샘플러(`proc_pid_rusage`, mach 틱→ns timebase 변환). "생성 중=달리기" 신호
   - `Sources/ConnorPet/NotificationCenterDB.swift` — macOS 알림센터 SQLite DB 읽기(Full Disk Access 필요). Claude 완료 알림="헤롱헤롱" 신호. `isReadable`이 사실상 "FDA 권한 있음" 프록시(baseline은 이 readable 여부로만 잡는다 — 비어 있어도 첫 실제 알림이 헤롱헤롱을 띄우도록)
   - `Sources/ConnorPet/FullDiskAccess.swift` — FDA 권한 감지(`isGranted()`=알림센터 DB 읽기 가능 여부) + `시스템 설정 › 전체 디스크 접근` 창 열기(`openSettings()`). 앱이 직접 부여할 수 없어(재실행 필요) 안내만 함. AppDelegate 메뉴의 "전체 디스크 접근 권한 (헤롱헤롱 알림)" 항목이 이걸 호출(권한 여부=체크 표시)
+  - `Sources/ConnorPet/UpdaterManager.swift` — Sparkle 자동 업데이트 래퍼. 실행 시 `checkForUpdateInformation()`으로 **UI 없이 조용히** 확인 → 메뉴로만 "업데이트 있음" 알림(팝업/토스트 없음), 사용자가 메뉴를 눌러야 `checkForUpdates()`로 정식 설치. 자동 확인/다운로드는 꺼 둠. `isConfigured`(Info.plist에 SUFeedURL 있음)일 때만 켜져서 `swift run` 개발 빌드는 설정-오류 팝업 없이 넘어감. EdDSA(SUPublicEDKey)로 검증하므로 ad-hoc/미공증 배포에서도 동작. AppDelegate 메뉴에 현재버전 표시 + 업데이트 항목을 붙인다
   - `Sources/ConnorPet/PetAnimationState.swift` — 우선순위 로직 포팅 + `AgentStatusWatching` 프로토콜 (`acknowledgeDone()`으로 헤롱헤롱 호버-해제) + 토큰/진화 필드
   - `Sources/ConnorPet/TokenUsage.swift` — 트랜스크립트 JSONL에서 실제 토큰 사용량 합산(`TranscriptTokenReader`, mtime 캐시) + 토큰→경험치%/진화단계 매핑(`XPModel`)
   - `Sources/ConnorPet/SpriteSheet.swift`, `PetView.swift`(펫 아래 경험치 바 포함 + 우클릭 모션 메뉴 맨 아래 "설정…" 항목), `PetWindow.swift` — 렌더링

@@ -4,9 +4,18 @@ import PackageDescription
 let package = Package(
     name: "ConnorPet",
     platforms: [.macOS(.v12)],
+    dependencies: [
+        // In-app auto-update. Sparkle verifies updates with its own EdDSA
+        // signature (not Apple Developer ID), so it works for our ad-hoc-signed,
+        // un-notarized DMG builds. See UpdaterManager.swift / scripts/make_app.sh.
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.6.0"),
+    ],
     targets: [
         .executableTarget(
             name: "ConnorPet",
+            dependencies: [
+                .product(name: "Sparkle", package: "Sparkle"),
+            ],
             resources: [
                 .copy("Resources/pets"),
                 .copy("Resources/effects"),

@@ -382,6 +382,8 @@ ConnorPet/                 진짜 결과물: 독립 실행형 macOS 앱
                                     250ms마다 폴링해 병합 (Claude Code 소스, 기본값)
     PetAnimationState.swift    포팅한 우선순위 로직 + 드래그 방향 판정 + AgentStatusWatching 프로토콜
                                 (acknowledgeDone()으로 헤롱헤롱 호버-해제 처리) + 토큰/진화용 필드
+    UpdaterManager.swift        Sparkle 자동 업데이트 래퍼 (실행 시 UI 없이 조용히 확인 →
+                                 메뉴로만 알림 → 클릭 시 정식 설치. EdDSA 검증이라 미서명 배포도 OK)
     TokenUsage.swift             트랜스크립트 JSONL에서 실제 토큰 사용량을 mtime 캐시로 합산
                                   (TranscriptTokenReader) + 토큰→경험치%/진화단계 매핑(XPModel)
     SpriteSheet.swift           spritesheet.png를 애니메이션별 프레임 배열로 자름
@@ -453,6 +455,28 @@ open /Applications/<Pet>-pet.app
 ```
 
 크기는 Orca 자체 기본값(`PET_SIZE_DEFAULT=180`)보다 작게, `90pt`로 맞춰뒀습니다 (`AppDelegate.swift`의 `petSize`). 더 키우거나 줄이고 싶으면 이 값만 바꾸면 됩니다.
+
+## 자동 업데이트 (Sparkle)
+
+서명·공증 안 한 배포본이라도 **[Sparkle](https://sparkle-project.org/)** 로 인앱 업데이트를 합니다. Sparkle 은 Apple Developer ID 대신 **자체 EdDSA 서명**으로 업데이트 파일을 검증하므로 ad-hoc 서명/공증 없이도 동작하고, 설치할 업데이트에서 quarantine 플래그를 벗겨 주기 때문에 **업데이트할 때는 Gatekeeper 첫 실행 관문을 다시 거치지 않습니다** (최초 설치 1회만 통과하면 됨).
+
+동작(팝업/토스트 없음, 메뉴로만 알림):
+
+- **켤 때** — 조용히(`checkForUpdateInformation()`, UI 없음) appcast 를 확인합니다. 피드가 아직 없거나 네트워크 오류면 아무 것도 안 뜨고 그냥 넘어갑니다.
+- **메뉴바** — 맨 아래에 항상 현재 버전(`ConnorPet vX.Y (build)`)을 보여 주고, 새 버전이 있으면 `⬆︎ 업데이트 설치 (vX.Y)` 로 바뀝니다. 없으면 `업데이트 확인…`.
+- **눌렀을 때** — 그때부터 Sparkle 정식 UI(다운로드 → 검증 → 교체 → 재실행)가 뜹니다.
+
+자동 확인·자동 다운로드는 코드에서 모두 꺼 둡니다(`UpdaterManager.swift`). 버전은 **git 태그가 단일 소스**입니다 — `CFBundleShortVersionString`=최신 태그(`vX.Y.Z`), `CFBundleVersion`=커밋 수(단조 증가라 Sparkle 비교에 안전). `make_app.sh`/CI 가 빌드 시 `git describe` 로 읽어 Info.plist 에 박습니다. 새 버전을 내려면 `git tag vX.Y.Z` 를 달면 됩니다.
+
+### 배포 담당자용 설정 (업데이트를 실제로 켜려면)
+
+앱에는 이미 검증용 **공개키**(`SUPublicEDKey`)와 피드 주소(`SUFeedURL`, GitHub Pages)가 박혀 있습니다. 실제로 업데이트를 발행하려면 한 번만 아래를 준비하면 됩니다:
+
+1. **개인키 발급** — 이 저장소의 공개키와 짝이 되는 개인키는 최초 `generate_keys` 실행 때 만든 사람의 **로그인 키체인**에 있습니다. CI 로 서명하려면 그 개인키를 export 해서(`generate_keys -x private.key`) 저장소 Secret **`SPARKLE_EDDSA_PRIVATE_KEY`** 에 넣습니다. (키를 새로 만들려면 `generate_keys` 로 만들고, 출력된 새 `SUPublicEDKey` 를 `scripts/make_app.sh` 와 `build-pet-dmg.yml` 의 값으로 교체.)
+2. **GitHub Pages 켜기** — `SUFeedURL` 이 가리키는 곳(`https://pet-egg.github.io/pet/appcast-<slug>.xml`)에 appcast 를 서빙하도록 Pages 를 활성화합니다.
+3. **발행** — `Build Pet DMG` 워크플로가 DMG 를 만들고, Secret 이 있으면 `sign_update`+`generate_appcast` 로 서명된 `appcast-<slug>.xml` 을 아티팩트로 함께 냅니다. 그 **DMG 를 릴리스에 업로드**(다운로드 URL 이 `releases/latest/download/<이름>.dmg` 가 되도록)하고 **appcast 를 Pages 에 올리면** 기존 사용자 앱이 다음 실행 때 새 버전을 감지합니다.
+
+Secret 이 없으면 서명 스텝은 조용히 건너뛰고 예전처럼 DMG 만 나옵니다(앱은 업데이트를 못 찾을 뿐 정상 동작).
 
 ## 클릭하면 브리핑
 
