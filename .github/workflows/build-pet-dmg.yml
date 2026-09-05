@@ -36,6 +36,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # 버전은 git 태그(최신 태그)와 커밋 수로 계산하므로 전체 히스토리가 필요하다.
+          # 기본 shallow 체크아웃은 태그가 없고 rev-list --count 도 1로 나온다.
+          fetch-depth: 0
 
       - name: Resolve pet metadata
         id: pet
@@ -86,7 +90,7 @@ jobs:
         run: |
           cd ConnorPet
           APP="$PET_NAME.app"
-          mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+          mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Frameworks"
           cp .build/release/ConnorPet "$APP/Contents/MacOS/ConnorPet"
           # AppDelegate.swift의 resourceBundle이 Bundle.main.resourceURL(=이 경로)을
           # 먼저 찾아보도록 되어 있다 — SwiftPM 기본 accessor(Bundle.module)는 .app
@@ -94,6 +98,27 @@ jobs:
           # the bundle root"로 서명 자체를 거부해서 quarantine 시 "손상됨" 오류가 남.
           cp -R .build/release/ConnorPet_ConnorPet.bundle "$APP/Contents/Resources/ConnorPet_ConnorPet.bundle"
           cp AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+
+          # Sparkle 자동 업데이트 임베드: 프레임워크를 Contents/Frameworks 로 넣고
+          # 실행 파일에 @executable_path/../Frameworks rpath 를 건다. SwiftPM 이 남긴
+          # rpath 는 러너의 빌드 경로(절대경로)라 배포본에서는 안 맞으므로 필요하다.
+          cp -R .build/release/Sparkle.framework "$APP/Contents/Frameworks/Sparkle.framework"
+          install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP/Contents/MacOS/ConnorPet" || true
+
+          # 버전은 git 태그(최신 태그)와 커밋 수로 계산한다. 태그가 없으면 0.0.0.
+          #   CFBundleShortVersionString = 사람용 마케팅 버전(UI 노출)
+          #   CFBundleVersion            = 커밋 수(단조 증가 → Sparkle 신·구 비교 기준)
+          SHORT_VERSION="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+          SHORT_VERSION="${SHORT_VERSION#v}"
+          [ -z "$SHORT_VERSION" ] && SHORT_VERSION="0.0.0"
+          BUILD_NUMBER="$(git rev-list --count HEAD 2>/dev/null || echo 1)"
+          echo "버전 $SHORT_VERSION (build $BUILD_NUMBER)"
+
+          # 펫마다 별도 앱(번들 ID 다름)이라 appcast 도 펫별로 둔다. GitHub Pages 서빙.
+          # SUPublicEDKey 는 업데이트 검증용 EdDSA 공개키(공개라 커밋해도 안전). 짝이 되는
+          # 개인키는 저장소에 없고, appcast 서명 스텝이 secrets 에서 받아 쓴다.
+          FEED_URL="https://pet-egg.github.io/pet/appcast-$PET_SLUG.xml"
+          SPARKLE_PUBLIC_KEY="5zPY3WaXtB6g72hVacYErOpHAnHYAbCcwVGWjK1p8R4="
 
           cat > "$APP/Contents/Info.plist" <<PLIST
           <?xml version="1.0" encoding="UTF-8"?>
@@ -111,11 +136,17 @@ jobs:
               <key>CFBundlePackageType</key>
               <string>APPL</string>
               <key>CFBundleShortVersionString</key>
-              <string>1.0</string>
+              <string>$SHORT_VERSION</string>
               <key>CFBundleVersion</key>
-              <string>1</string>
+              <string>$BUILD_NUMBER</string>
               <key>LSUIElement</key>
               <true/>
+              <key>SUFeedURL</key>
+              <string>$FEED_URL</string>
+              <key>SUPublicEDKey</key>
+              <string>$SPARKLE_PUBLIC_KEY</string>
+              <key>SUEnableAutomaticChecks</key>
+              <false/>
           </dict>
           </plist>
           PLIST
@@ -144,6 +175,40 @@ jobs:
         with:
           name: ${{ steps.pet.outputs.name }}-dmg
           path: ConnorPet/${{ steps.pet.outputs.name }}.dmg
+
+      # Sparkle appcast 서명·생성. 자동 업데이트를 켜려면 저장소 Secret 에
+      # SPARKLE_EDDSA_PRIVATE_KEY (generate_keys 로 만든 개인키, base64) 를 넣어야 한다.
+      # 없으면 이 스텝은 조용히 건너뛰고 DMG 만 나온다(기존 동작과 동일).
+      # 개인키는 Info.plist 에 박힌 SUPublicEDKey 와 반드시 짝이어야 한다.
+      - name: Sign update & generate appcast
+        env:
+          SPARKLE_EDDSA_PRIVATE_KEY: ${{ secrets.SPARKLE_EDDSA_PRIVATE_KEY }}
+          PET_NAME: ${{ steps.pet.outputs.name }}
+          PET_SLUG: ${{ steps.pet.outputs.slug }}
+        run: |
+          cd ConnorPet
+          if [ -z "$SPARKLE_EDDSA_PRIVATE_KEY" ]; then
+            echo "::notice::SPARKLE_EDDSA_PRIVATE_KEY 시크릿이 없어 appcast 서명/생성을 건너뜁니다 (DMG 만 업로드)."
+            exit 0
+          fi
+          BIN=".build/artifacts/sparkle/Sparkle/bin"
+          mkdir -p appcast_out
+          cp "$PET_NAME.dmg" appcast_out/
+          # 개인키는 stdin(--ed-key-file -)으로 넘겨 디스크에 남기지 않는다.
+          # download-url-prefix + DMG 파일명 = 최종 다운로드 URL → 그 릴리스에 DMG 를 올린다.
+          printf '%s' "$SPARKLE_EDDSA_PRIVATE_KEY" | "$BIN/generate_appcast" appcast_out \
+            --ed-key-file - \
+            --download-url-prefix "https://github.com/pet-egg/pet/releases/latest/download/"
+          # 펫마다 별도 피드다: appcast.xml → appcast-<slug>.xml (Info.plist SUFeedURL 과 일치)
+          mv appcast_out/appcast.xml "appcast-$PET_SLUG.xml"
+          echo "생성됨: appcast-$PET_SLUG.xml"
+
+      - name: Upload appcast artifact
+        if: ${{ hashFiles(format('ConnorPet/appcast-{0}.xml', steps.pet.outputs.slug)) != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.pet.outputs.name }}-appcast
+          path: ConnorPet/appcast-${{ steps.pet.outputs.slug }}.xml
 
       - name: Job summary
         env:

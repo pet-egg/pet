@@ -4,6 +4,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var window: PetWindow?
     private var petView: PetView?
     private var statusItem: NSStatusItem?
+    // In-app updater (Sparkle). Only created for packaged builds that carry a
+    // SUFeedURL — see UpdaterManager.isConfigured. `updateAvailable`/`updateVersion`
+    // are driven by the silent launch check and reflected in the menu.
+    private var updater: UpdaterManager?
+    private var updateAvailable = false
+    private var updateVersion: String?
     private var bubble: SpeechBubbleWindow?
     private var flame: FlameWindow?
     private var xpDetailWindow: XPDetailWindow?
@@ -210,6 +216,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         loadSkillEffect(for: sheet)
 
         setUpStatusItem()
+        setUpUpdater()
 
 selectedStatusSource = Self.savedStatusSource(fallback: Self.availableStatusSources[0])
         startWatcher(for: selectedStatusSource)
@@ -527,6 +534,61 @@ selectedStatusSource = Self.savedStatusSource(fallback: Self.availableStatusSour
         rebuildMenu()
     }
 
+    // MARK: - In-app update (Sparkle)
+
+    /// Wires up Sparkle for packaged builds and kicks off a **silent** launch
+    /// check (no pop-up). Availability shows only through the menu until the user
+    /// clicks the update item. Dev/`swift run` builds have no SUFeedURL, so the
+    /// updater stays nil and the menu shows a disabled "업데이트 확인" placeholder.
+    private func setUpUpdater() {
+        guard UpdaterManager.isConfigured else { return }
+        let mgr = UpdaterManager()
+        mgr.onAvailabilityChanged = { [weak self] available, version in
+            guard let self else { return }
+            self.updateAvailable = available
+            self.updateVersion = version
+            self.rebuildMenu()
+        }
+        updater = mgr
+        mgr.checkQuietlyOnLaunch()
+    }
+
+    /// Human-readable build version pulled from Info.plist, e.g. "v1.3.0 (214)".
+    /// Shown as a disabled row so the user can see what they're running.
+    private var appVersionString: String {
+        let info = Bundle.main.infoDictionary
+        let short = info?["CFBundleShortVersionString"] as? String ?? "?"
+        let build = info?["CFBundleVersion"] as? String ?? "?"
+        return "v\(short) (\(build))"
+    }
+
+    /// Builds the current-version row + the update row. When the silent launch
+    /// check found a newer version, the update row calls it out and highlights;
+    /// otherwise it's a plain "업데이트 확인…". Disabled (with a hint) when this
+    /// build isn't configured for updates (e.g. a local `swift run`).
+    private func appendVersionItems(to menu: NSMenu) {
+        let versionItem = NSMenuItem(title: "ConnorPet \(appVersionString)", action: nil, keyEquivalent: "")
+        versionItem.isEnabled = false
+        menu.addItem(versionItem)
+
+        let updateItem: NSMenuItem
+        if updater == nil {
+            updateItem = NSMenuItem(title: "업데이트 확인 (이 빌드는 미지원)", action: nil, keyEquivalent: "")
+            updateItem.isEnabled = false
+        } else if updateAvailable, let v = updateVersion {
+            updateItem = NSMenuItem(title: "⬆︎ 업데이트 설치 (v\(v))", action: #selector(checkForUpdates), keyEquivalent: "")
+            updateItem.target = self
+        } else {
+            updateItem = NSMenuItem(title: "업데이트 확인…", action: #selector(checkForUpdates), keyEquivalent: "")
+            updateItem.target = self
+        }
+        menu.addItem(updateItem)
+    }
+
+    @objc private func checkForUpdates() {
+        updater?.userInitiatedCheck()
+    }
+
     // MARK: - Menu-bar pet picker
 
     private func rebuildMenu() {
@@ -594,6 +656,9 @@ selectedStatusSource = Self.savedStatusSource(fallback: Self.availableStatusSour
         menu.addItem(.separator())
         menu.addItem(makeBattleMenuItem())
         menu.addItem(makeStareMenuItem())
+
+        menu.addItem(.separator())
+        appendVersionItems(to: menu)
 
         menu.addItem(.separator())
         let quitItem = NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q")
