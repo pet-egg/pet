@@ -5,7 +5,10 @@ name: Build Pet DMG
 # 골라 그 펫만 남기게 소스를 패치했지만, 지금은 메뉴바에서 12종을 모두 전환할 수 있는
 # 기본 빌드를 그대로 배포한다. 산출물 이름은 전부 `pet` 로 고정한다.
 on:
-  workflow_dispatch: {}
+  push:
+    tags:
+      - 'v*'            # 예: git push origin v1.0.0 → 빌드 + 릴리스 + Pages 배포 자동
+  workflow_dispatch: {} # 수동 실행은 아티팩트(pet.dmg/appcast.xml)만 만든다(릴리스/Pages 안 함)
 
 permissions:
   contents: read
@@ -187,3 +190,63 @@ jobs:
             echo "open /path/to/pet.app"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # ── 아래 두 잡은 태그 푸시(refs/tags/v*)일 때만 실행된다. 수동(workflow_dispatch)
+  #    실행은 github.ref 가 브랜치라 건너뛰고 위 빌드 아티팩트만 남는다. ──
+
+  # 릴리스 생성 + pet.dmg 업로드. "latest" 릴리스가 이 태그가 되므로
+  # appcast 의 enclosure(releases/latest/download/pet.dmg)와 URL 이 일치한다.
+  release:
+    needs: build-dmg
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download pet.dmg
+        uses: actions/download-artifact@v4
+        with:
+          name: pet-dmg
+          path: dist
+      - name: Create release & upload pet.dmg
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # 이미 있는 태그면 create 가 실패 → 그때는 asset 만 덮어쓴다(--clobber).
+          gh release create "$GITHUB_REF_NAME" dist/pet.dmg \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$GITHUB_REF_NAME" \
+            --notes "Sparkle 자동 업데이트 지원 빌드 ($GITHUB_REF_NAME)" \
+            --latest \
+          || gh release upload "$GITHUB_REF_NAME" dist/pet.dmg --clobber --repo "$GITHUB_REPOSITORY"
+
+  # 서명된 appcast.xml 을 GitHub Pages 로 배포 → https://pet-egg.github.io/pet/appcast.xml
+  # 사전 준비: 저장소 Settings › Pages › Source 를 "GitHub Actions" 로 설정해 둘 것.
+  # appcast 는 SPARKLE_EDDSA_PRIVATE_KEY 시크릿이 있어야 생성되므로, 시크릿이 없으면
+  # 아티팩트가 없어 이 잡은 실패한다(= 릴리스에는 서명 키가 필수라는 신호).
+  publish-appcast:
+    needs: build-dmg
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Download appcast.xml
+        uses: actions/download-artifact@v4
+        with:
+          name: pet-appcast
+          path: site
+      - name: Prepare site (.nojekyll)
+        run: touch site/.nojekyll
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - name: Deploy to Pages
+        id: deploy
+        uses: actions/deploy-pages@v4

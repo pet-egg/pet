@@ -477,13 +477,28 @@ open /Applications/pet.app
 
 ### 배포 담당자용 설정 (업데이트를 실제로 켜려면)
 
-앱에는 이미 검증용 **공개키**(`SUPublicEDKey`)와 피드 주소(`SUFeedURL`, GitHub Pages)가 박혀 있습니다. 실제로 업데이트를 발행하려면 한 번만 아래를 준비하면 됩니다:
+앱에는 이미 검증용 **공개키**(`SUPublicEDKey`)와 피드 주소(`SUFeedURL` = `https://pet-egg.github.io/pet/appcast.xml`)가 박혀 있습니다. **한 번만** 아래 두 가지를 준비하면, 그 뒤로는 **`git tag` 푸시 하나로 빌드·릴리스·Pages 배포가 전부 자동**입니다.
 
-1. **개인키 발급** — 이 저장소의 공개키와 짝이 되는 개인키는 최초 `generate_keys` 실행 때 만든 사람의 **로그인 키체인**에 있습니다. CI 로 서명하려면 그 개인키를 export 해서(`generate_keys -x private.key`) 저장소 Secret **`SPARKLE_EDDSA_PRIVATE_KEY`** 에 넣습니다. (키를 새로 만들려면 `generate_keys` 로 만들고, 출력된 새 `SUPublicEDKey` 를 `scripts/make_app.sh` 와 `build-pet-dmg.yml` 의 값으로 교체.)
-2. **GitHub Pages 켜기** — `SUFeedURL` 이 가리키는 곳(`https://pet-egg.github.io/pet/appcast-<slug>.xml`)에 appcast 를 서빙하도록 Pages 를 활성화합니다.
-3. **발행** — `Build Pet DMG` 워크플로가 DMG 를 만들고, Secret 이 있으면 `sign_update`+`generate_appcast` 로 서명된 `appcast-<slug>.xml` 을 아티팩트로 함께 냅니다. 그 **DMG 를 릴리스에 업로드**(다운로드 URL 이 `releases/latest/download/<이름>.dmg` 가 되도록)하고 **appcast 를 Pages 에 올리면** 기존 사용자 앱이 다음 실행 때 새 버전을 감지합니다.
+**최초 1회 준비**
 
-Secret 이 없으면 서명 스텝은 조용히 건너뛰고 예전처럼 DMG 만 나옵니다(앱은 업데이트를 못 찾을 뿐 정상 동작).
+1. **개인키를 Secret 에 등록** — 공개키와 짝이 되는 개인키는 최초 `generate_keys` 실행 때 만든 사람의 **로그인 키체인**에 있습니다. export 해서(`generate_keys -x private.key`) 저장소 Secret **`SPARKLE_EDDSA_PRIVATE_KEY`** 에 넣습니다. (키를 새로 만들려면 `generate_keys` 로 만들고, 출력된 새 `SUPublicEDKey` 를 `scripts/make_app.sh` 와 `build-pet-dmg.yml` 의 값으로 교체.)
+2. **Pages 소스를 "GitHub Actions" 로** — 저장소 **Settings › Pages › Build and deployment › Source** 를 **GitHub Actions** 로 설정합니다. (워크플로의 `publish-appcast` 잡이 `appcast.xml` 을 여기로 배포합니다.)
+
+**릴리스 발행 (버전 낼 때마다)**
+
+```sh
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+태그(`v*`)를 푸시하면 `Build Pet DMG` 워크플로가 자동으로:
+- `pet.dmg` + 서명된 `appcast.xml` 빌드 (`git describe` 로 버전 주입)
+- **릴리스 생성 + `pet.dmg` 업로드** → 다운로드 URL `https://github.com/pet-egg/pet/releases/latest/download/pet.dmg` (appcast 의 enclosure 와 일치)
+- 서명된 **`appcast.xml` 을 Pages 로 배포**
+
+→ 기존 사용자 앱이 다음 실행 때 새 버전을 감지합니다. (수동 `workflow_dispatch` 실행은 릴리스/Pages 없이 아티팩트만 만듭니다.)
+
+> 릴리스에는 서명 키가 필수입니다 — Secret 이 없으면 `appcast.xml` 이 생성되지 않아 `publish-appcast` 잡이 실패합니다(빌드/릴리스 자체는 되지만 자동 업데이트 피드는 안 올라감).
 
 ## 클릭하면 브리핑
 
