@@ -281,7 +281,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         let granted = d.settingsFullDiskAccessGranted
         let fdaButton = makeButton(title: granted ? "확인" : "열기", action: #selector(fdaPressed))
         return [
-            RowSpec(title: "Claude Code 상태 훅", subtitle: "얼음(권한 대기) / 헤롱헤롱(작업 완료) 표시", control: hooks),
+            RowSpec(title: "Claude Code 상태 훅", subtitle: "헤롱헤롱(작업 완료) / 실패 표시", control: hooks),
             RowSpec(title: "전체 디스크 접근 권한",
                     subtitle: granted ? "허용됨 — 완료 알림으로 헤롱헤롱 감지" : "헤롱헤롱 알림 감지에 필요",
                     control: fdaButton),
