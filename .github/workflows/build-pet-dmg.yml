@@ -1,29 +1,11 @@
 name: Build Pet DMG
 
-# 메뉴바 펫 앱(ConnorPet/)을 base pet 하나만 골라서 .dmg로 빌드하는 수동 파이프라인.
-# ConnorPet은 SwiftPM 실행 파일(swift build -c release)로만 빌드되고, 지금까지 .app
-# 번들/dmg 생성 과정이 없었어서 이 워크플로우에서 그 자리를 대신 채운다.
+# 메뉴바 펫 앱(ConnorPet/)을 `cd ConnorPet && swift run` 과 동일하게 **모든 펫을 포함한
+# 단일 앱**으로 빌드해 pet.app / pet.dmg 를 만드는 수동 파이프라인. 예전에는 펫 하나를
+# 골라 그 펫만 남기게 소스를 패치했지만, 지금은 메뉴바에서 12종을 모두 전환할 수 있는
+# 기본 빌드를 그대로 배포한다. 산출물 이름은 전부 `pet` 로 고정한다.
 on:
-  workflow_dispatch:
-    inputs:
-      pet:
-        description: '빌드할 base pet (진화형은 자동으로 함께 포함됨)'
-        required: true
-        type: choice
-        default: '리아코 (Totodile)'
-        options:
-          - '리아코 (Totodile)'
-          - '메타몽 (Ditto)'
-          - '파이리 (Charmander)'
-          - '꼬부기 (Squirtle)'
-          - '꼬마돌 (Geodude)'
-          - '이브이 (Eevee)'
-          - '치코리타 (Chikorita)'
-          - '아차모 (Torchic)'
-          - '토게피 (Togepi)'
-          - '뚜꾸리 (Tepig)'
-          - '잠만보 (Snorlax)'
-          - '팬텀 (Gengar)'
+  workflow_dispatch: {}
 
 permissions:
   contents: read
@@ -31,8 +13,6 @@ permissions:
 jobs:
   build-dmg:
     runs-on: macos-latest
-    env:
-      PET_LABEL: ${{ inputs.pet }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -41,38 +21,16 @@ jobs:
           # 기본 shallow 체크아웃은 태그가 없고 rev-list --count 도 1로 나온다.
           fetch-depth: 0
 
-      - name: Resolve pet metadata
-        id: pet
-        run: |
-          # 드롭다운 라벨 "리아코 (Totodile)"의 괄호 안 영문 slug만 뽑아 소문자로.
-          SLUG="$(printf '%s' "$PET_LABEL" | sed -E 's/.*\(([^)]+)\).*/\1/' | tr '[:upper:]' '[:lower:]')"
-          # totodile -> Totodile-pet (.app/.dmg 이름, CFBundleName, 아티팩트 이름에 사용)
-          NAME="$(printf '%s' "${SLUG:0:1}" | tr '[:lower:]' '[:upper:]')${SLUG:1}-pet"
-          echo "slug=$SLUG" >> "$GITHUB_OUTPUT"
-          echo "name=$NAME" >> "$GITHUB_OUTPUT"
-
-      - name: Patch availablePetSlugs to the selected pet only
-        env:
-          PET_SLUG: ${{ steps.pet.outputs.slug }}
-        run: |
-          # 저장소 원본 파일이 아니라 이 러너의 체크아웃 사본만 고치는 것이라 커밋되지 않음.
-          # Resources/pets 전체가 리소스 번들로 그대로 복사되므로(Package.swift 참고),
-          # 선택한 base pet의 진화형 스프라이트도 이 시점에 이미 함께 포함되어 있다 —
-          # 별도로 진화형 리소스를 추려 넣을 필요가 없다.
-          sed -i '' "s/private static let availablePetSlugs = \[.*\]/private static let availablePetSlugs = [\"$PET_SLUG\"]/" ConnorPet/Sources/ConnorPet/AppDelegate.swift
-          grep -n 'availablePetSlugs =' ConnorPet/Sources/ConnorPet/AppDelegate.swift
-
       - name: Build (release)
         run: |
           cd ConnorPet
+          # 펫을 고르지 않는다 — 기본 availablePetSlugs(전체)를 그대로 빌드한다.
           swift build -c release
 
       - name: Generate app icon
         run: |
           cd ConnorPet
-          # 아이콘은 assets/app-icon.png 하나로 고정한다. 예전에는 선택한 펫의
-          # 스프라이트를 잘라 썼는데, 프레임 크기가 펫마다 달라지면서(파이리 계열
-          # 진화형은 480) 고정 좌표 crop 이 엉뚱한 칸을 집게 됐다.
+          # 아이콘은 assets/app-icon.png 하나로 고정(펫 무관).
           cp ../assets/app-icon.png /tmp/icon_master.png
 
           mkdir -p AppIcon.iconset
@@ -83,19 +41,20 @@ jobs:
           done
           iconutil -c icns AppIcon.iconset -o AppIcon.icns
 
-      - name: Assemble .app bundle
-        env:
-          PET_SLUG: ${{ steps.pet.outputs.slug }}
-          PET_NAME: ${{ steps.pet.outputs.name }}
+      - name: Assemble pet.app bundle
         run: |
           cd ConnorPet
-          APP="$PET_NAME.app"
+          APP="pet.app"
+          EXE="pet"
+          BUNDLE_ID="io.github.pet-egg.pet"
           mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Frameworks"
-          cp .build/release/ConnorPet "$APP/Contents/MacOS/ConnorPet"
+          # 실행 파일명도 pet 으로 바꾼다(CFBundleExecutable 과 일치시켜야 함).
+          cp .build/release/ConnorPet "$APP/Contents/MacOS/$EXE"
           # AppDelegate.swift의 resourceBundle이 Bundle.main.resourceURL(=이 경로)을
           # 먼저 찾아보도록 되어 있다 — SwiftPM 기본 accessor(Bundle.module)는 .app
           # 번들 루트에서 찾는데, 거기 두면 codesign이 "unsealed contents present in
           # the bundle root"로 서명 자체를 거부해서 quarantine 시 "손상됨" 오류가 남.
+          # 리소스 번들 이름(ConnorPet_ConnorPet.bundle)은 SwiftPM 산출물이라 그대로 둔다.
           cp -R .build/release/ConnorPet_ConnorPet.bundle "$APP/Contents/Resources/ConnorPet_ConnorPet.bundle"
           cp AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 
@@ -103,7 +62,7 @@ jobs:
           # 실행 파일에 @executable_path/../Frameworks rpath 를 건다. SwiftPM 이 남긴
           # rpath 는 러너의 빌드 경로(절대경로)라 배포본에서는 안 맞으므로 필요하다.
           cp -R .build/release/Sparkle.framework "$APP/Contents/Frameworks/Sparkle.framework"
-          install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP/Contents/MacOS/ConnorPet" || true
+          install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP/Contents/MacOS/$EXE" || true
 
           # 버전은 git 태그(최신 태그)와 커밋 수로 계산한다. 태그가 없으면 0.0.0.
           #   CFBundleShortVersionString = 사람용 마케팅 버전(UI 노출)
@@ -114,10 +73,10 @@ jobs:
           BUILD_NUMBER="$(git rev-list --count HEAD 2>/dev/null || echo 1)"
           echo "버전 $SHORT_VERSION (build $BUILD_NUMBER)"
 
-          # 펫마다 별도 앱(번들 ID 다름)이라 appcast 도 펫별로 둔다. GitHub Pages 서빙.
+          # 모든 펫이 든 단일 앱이므로 피드도 하나다: appcast.xml.
           # SUPublicEDKey 는 업데이트 검증용 EdDSA 공개키(공개라 커밋해도 안전). 짝이 되는
           # 개인키는 저장소에 없고, appcast 서명 스텝이 secrets 에서 받아 쓴다.
-          FEED_URL="https://pet-egg.github.io/pet/appcast-$PET_SLUG.xml"
+          FEED_URL="https://pet-egg.github.io/pet/appcast.xml"
           SPARKLE_PUBLIC_KEY="5zPY3WaXtB6g72hVacYErOpHAnHYAbCcwVGWjK1p8R4="
 
           cat > "$APP/Contents/Info.plist" <<PLIST
@@ -126,11 +85,11 @@ jobs:
           <plist version="1.0">
           <dict>
               <key>CFBundleExecutable</key>
-              <string>ConnorPet</string>
+              <string>$EXE</string>
               <key>CFBundleIdentifier</key>
-              <string>com.connor.$PET_SLUG-pet</string>
+              <string>$BUNDLE_ID</string>
               <key>CFBundleName</key>
-              <string>$PET_NAME</string>
+              <string>pet</string>
               <key>CFBundleIconFile</key>
               <string>AppIcon</string>
               <key>CFBundlePackageType</key>
@@ -139,7 +98,11 @@ jobs:
               <string>$SHORT_VERSION</string>
               <key>CFBundleVersion</key>
               <string>$BUILD_NUMBER</string>
+              <key>LSMinimumSystemVersion</key>
+              <string>12.0</string>
               <key>LSUIElement</key>
+              <true/>
+              <key>NSHighResolutionCapable</key>
               <true/>
               <key>SUFeedURL</key>
               <string>$FEED_URL</string>
@@ -163,28 +126,24 @@ jobs:
           # 수 있는 정상 동작이다.
           codesign --force --deep --sign - "$APP"
 
-      - name: Create dmg
-        env:
-          PET_NAME: ${{ steps.pet.outputs.name }}
+      - name: Create pet.dmg
         run: |
           cd ConnorPet
-          hdiutil create -volname "$PET_NAME" -srcfolder "$PET_NAME.app" -ov -format UDZO "$PET_NAME.dmg"
+          hdiutil create -volname "pet" -srcfolder "pet.app" -ov -format UDZO "pet.dmg"
 
       - name: Upload dmg artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.pet.outputs.name }}-dmg
-          path: ConnorPet/${{ steps.pet.outputs.name }}.dmg
+          name: pet-dmg
+          path: ConnorPet/pet.dmg
 
       # Sparkle appcast 서명·생성. 자동 업데이트를 켜려면 저장소 Secret 에
       # SPARKLE_EDDSA_PRIVATE_KEY (generate_keys 로 만든 개인키, base64) 를 넣어야 한다.
-      # 없으면 이 스텝은 조용히 건너뛰고 DMG 만 나온다(기존 동작과 동일).
+      # 없으면 이 스텝은 조용히 건너뛰고 DMG 만 나온다.
       # 개인키는 Info.plist 에 박힌 SUPublicEDKey 와 반드시 짝이어야 한다.
       - name: Sign update & generate appcast
         env:
           SPARKLE_EDDSA_PRIVATE_KEY: ${{ secrets.SPARKLE_EDDSA_PRIVATE_KEY }}
-          PET_NAME: ${{ steps.pet.outputs.name }}
-          PET_SLUG: ${{ steps.pet.outputs.slug }}
         run: |
           cd ConnorPet
           if [ -z "$SPARKLE_EDDSA_PRIVATE_KEY" ]; then
@@ -193,37 +152,38 @@ jobs:
           fi
           BIN=".build/artifacts/sparkle/Sparkle/bin"
           mkdir -p appcast_out
-          cp "$PET_NAME.dmg" appcast_out/
+          cp "pet.dmg" appcast_out/
           # 개인키는 stdin(--ed-key-file -)으로 넘겨 디스크에 남기지 않는다.
-          # download-url-prefix + DMG 파일명 = 최종 다운로드 URL → 그 릴리스에 DMG 를 올린다.
+          # download-url-prefix + DMG 파일명(pet.dmg) = 최종 다운로드 URL:
+          #   https://github.com/pet-egg/pet/releases/latest/download/pet.dmg
+          # → 그 릴리스에 pet.dmg 를 올리면 된다.
           printf '%s' "$SPARKLE_EDDSA_PRIVATE_KEY" | "$BIN/generate_appcast" appcast_out \
             --ed-key-file - \
             --download-url-prefix "https://github.com/pet-egg/pet/releases/latest/download/"
-          # generate_appcast 는 앱 Info.plist 의 SUFeedURL 파일명(= appcast-<slug>.xml)을
-          # 그대로 따서 파일을 만든다. 즉 "appcast.xml" 이 아니라 이미 원하는 이름이라,
-          # 고정 이름으로 mv 하면 파일이 없어 실패한다. 실제 생성된 유일한 .xml 을 집어서 꺼낸다.
+          # generate_appcast 는 앱 Info.plist 의 SUFeedURL 파일명(= appcast.xml)을 그대로
+          # 따서 파일을 만든다. 실제 생성된 유일한 .xml 을 집어서 최상위로 꺼낸다.
           GENERATED="$(ls appcast_out/*.xml | head -1)"
-          mv "$GENERATED" "appcast-$PET_SLUG.xml"
-          echo "생성됨: appcast-$PET_SLUG.xml (원본: $GENERATED)"
+          mv "$GENERATED" "appcast.xml"
+          echo "생성됨: appcast.xml (원본: $GENERATED)"
 
       - name: Upload appcast artifact
-        if: ${{ hashFiles(format('ConnorPet/appcast-{0}.xml', steps.pet.outputs.slug)) != '' }}
+        if: ${{ hashFiles('ConnorPet/appcast.xml') != '' }}
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.pet.outputs.name }}-appcast
-          path: ConnorPet/appcast-${{ steps.pet.outputs.slug }}.xml
+          name: pet-appcast
+          path: ConnorPet/appcast.xml
 
       - name: Job summary
-        env:
-          PET_NAME: ${{ steps.pet.outputs.name }}
         run: |
           {
-            echo "## $PET_NAME.dmg"
+            echo "## pet.dmg"
+            echo ""
+            echo "모든 펫(12종)이 든 단일 앱입니다 — 메뉴바에서 전환하세요."
             echo ""
             echo "코드서명/공증(notarization) 없이 ad-hoc 서명만 했습니다. 다운로드한 파일은 quarantine 플래그가 붙어 있어서, 그대로 더블클릭하면 macOS(특히 Apple Silicon)가 아무 안내도 없이 실행을 막고 앱을 휴지통으로 옮겨버립니다(우클릭 → 열기로도 안 열림). 다음을 터미널에서 실행한 뒤 여세요:"
             echo ""
             echo '```sh'
-            echo "xattr -d com.apple.quarantine /path/to/$PET_NAME.app"
-            echo "open /path/to/$PET_NAME.app"
+            echo "xattr -d com.apple.quarantine /path/to/pet.app"
+            echo "open /path/to/pet.app"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
