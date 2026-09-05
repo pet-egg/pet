@@ -724,6 +724,12 @@ selectedStatusSource = Self.savedStatusSource(fallback: Self.availableStatusSour
         appendVersionItems(to: menu)
 
         menu.addItem(.separator())
+        // 펫 우클릭과 동일한 설정 창 진입점 — 메뉴바에서도 열 수 있게 한다.
+        let settingsItem = NSMenuItem(title: "설정…", action: #selector(openSettingsFromMenu), keyEquivalent: ",")
+        settingsItem.target = self
+        menu.addItem(settingsItem)
+
+        menu.addItem(.separator())
         let quitItem = NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
@@ -732,6 +738,11 @@ selectedStatusSource = Self.savedStatusSource(fallback: Self.availableStatusSour
         // 같은 값을 보여 주는 설정 창이 떠 있으면 함께 갱신한다(대전 상대 목록,
         // 훅/권한 상태 등이 밖에서 바뀔 수 있다). rebuild 는 창이 보일 때만 돈다.
         settingsController?.refresh()
+    }
+
+    /// 메뉴바 › "설정…" 진입점. 펫 우클릭과 같은 창을 연다.
+    @objc private func openSettingsFromMenu() {
+        openSettingsWindow()
     }
 
     /// 펫 우클릭 › "설정…" 진입점. 창을 (없으면 만들어) 띄운다.
