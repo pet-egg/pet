@@ -39,10 +39,20 @@ import Foundation
 /// entry when installed, else our own edge-detected one. An overlay can never
 /// force blocked/working, so a stale one can never mask a live session — that
 /// hook-wins inversion was the old "frozen on 얼음 mid-session" bug.
+///
+/// Orca exclusion: sessions Orca launched also write `~/.claude/sessions` files
+/// (they're the same `claude` processes), so this source would otherwise report
+/// them too. Since the Orca source already covers those, we read Orca's own
+/// `last-status.json` and skip any sessionId it lists (`orcaManagedSessionIds`).
+/// The result: "Claude Code" tracks your standalone/terminal sessions, "Orca"
+/// tracks Orca's — no double-counting. No-op when Orca isn't installed.
 final class ClaudeCodeStatusWatcher: AgentStatusWatching {
     private let sessionsDir: URL
     private let hookStatusFileURL: URL
     private let projectsDir: URL
+    /// Orca's own status file. We read it only to learn which sessionIds Orca is
+    /// managing, so this source can *exclude* them (the Orca source is for those).
+    private let orcaStatusFileURL: URL
     private let pollInterval: TimeInterval
     private var timer: Timer?
     private var lastFingerprint: [String: Date] = [:]
@@ -57,6 +67,11 @@ final class ClaudeCodeStatusWatcher: AgentStatusWatching {
     private var lastBusyIdleBySession: [String: String] = [:]
     private var completionBySession: [String: (state: String, at: Double)] = [:]
 
+    // Accumulated sessionIds Orca has ever reported managing (see poll()). Grows
+    // as Orca claims sessions, pruned to sessions whose files still exist so it
+    // can't grow without bound. Robust to Orca's flickering last-status.json.
+    private var orcaSeenSessionIds: Set<String> = []
+
     private let tokenReader = TranscriptTokenReader()
     // Resolved `<sessionId>.jsonl` paths, cached so we don't rescan the
     // projects tree every poll. A session's transcript never changes location.
@@ -69,6 +84,8 @@ final class ClaudeCodeStatusWatcher: AgentStatusWatching {
         self.sessionsDir = home.appendingPathComponent(".claude/sessions")
         self.hookStatusFileURL = home.appendingPathComponent(".claude/pet-status.json")
         self.projectsDir = home.appendingPathComponent(".claude/projects")
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        self.orcaStatusFileURL = appSupport.appendingPathComponent("Orca/agent-hooks/last-status.json")
         self.pollInterval = pollInterval
     }
 
@@ -106,6 +123,11 @@ final class ClaudeCodeStatusWatcher: AgentStatusWatching {
         }
         let hookAttrs = try? FileManager.default.attributesOfItem(atPath: hookStatusFileURL.path)
         fingerprint["pet-status.json"] = (hookAttrs?[.modificationDate] as? Date) ?? .distantPast
+        // Orca's file too: when it changes, the set of Orca-managed sessions we
+        // exclude may change, so we must re-evaluate. (Absent when Orca isn't
+        // installed → .distantPast, no churn.)
+        let orcaAttrs = try? FileManager.default.attributesOfItem(atPath: orcaStatusFileURL.path)
+        fingerprint["orca-last-status.json"] = (orcaAttrs?[.modificationDate] as? Date) ?? .distantPast
         // Also fold in the transcripts we already resolved on prior polls, so a
         // token count that grows mid-turn refreshes the XP bar even in the rare
         // window where the session file itself didn't change.
@@ -131,12 +153,24 @@ final class ClaudeCodeStatusWatcher: AgentStatusWatching {
             }
         }
 
+        // Sessions Orca launched are shown by the Orca source; exclude them here
+        // so selecting "Claude Code" doesn't double-report them. We *accumulate*
+        // the sessionIds Orca reports rather than trusting a single snapshot:
+        // Orca rewrites last-status.json on every hook across every pane, and an
+        // actively-working session's `providerSession.id` isn't present in every
+        // rewrite (observed flickering). Since a sessionId is unique to one
+        // session for its whole life, "Orca ever reported it" is a safe, stable
+        // signal — and we prune ids back out once their session file is gone.
+        orcaSeenSessionIds.formUnion(orcaManagedSessionIds())
+
         let now = Date().timeIntervalSince1970 * 1000
         var entries: [AgentStatusEntry] = []
         var seenSessionIds = Set<String>()
         for (sessionId, session) in sessionsById {
             seenSessionIds.insert(sessionId)
             guard session.alive else { continue }
+            // Skip Orca-managed sessions (the Orca source owns those).
+            if orcaSeenSessionIds.contains(sessionId) { continue }
             let label = "claude-code:\(session.name ?? sessionId)"
             let transcriptPath = transcriptPath(forSessionId: sessionId)
 
@@ -197,6 +231,10 @@ final class ClaudeCodeStatusWatcher: AgentStatusWatching {
         // two dictionaries can't grow without bound over a long-lived app.
         lastBusyIdleBySession = lastBusyIdleBySession.filter { seenSessionIds.contains($0.key) }
         completionBySession = completionBySession.filter { seenSessionIds.contains($0.key) }
+        // Keep only Orca ids whose session file still exists — a live session
+        // that flickered out of Orca's file stays excluded (its file is present),
+        // while a truly ended session is forgotten so the set stays bounded.
+        orcaSeenSessionIds = orcaSeenSessionIds.intersection(seenSessionIds)
 
         publish(entries: entries)
     }
@@ -269,6 +307,31 @@ final class ClaudeCodeStatusWatcher: AgentStatusWatching {
             }
         }
         return false
+    }
+
+    /// sessionIds that Orca is currently tracking, read from its own
+    /// `last-status.json`. Each entry carries the Claude Code session id at
+    /// `providerSession.id` (with `key == "session_id"`) — a direct field, so we
+    /// don't have to parse it out of the transcript filename. Used to exclude
+    /// Orca-launched sessions from this source. Returns an empty set (→ no
+    /// exclusion) when Orca isn't installed or the file can't be read/parsed, so
+    /// a machine without Orca behaves exactly as before.
+    private func orcaManagedSessionIds() -> Set<String> {
+        guard
+            let data = try? Data(contentsOf: orcaStatusFileURL),
+            let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let entries = root["entries"] as? [String: Any]
+        else { return [] }
+        var ids = Set<String>()
+        for (_, value) in entries {
+            guard
+                let entry = value as? [String: Any],
+                let providerSession = entry["providerSession"] as? [String: Any],
+                let id = providerSession["id"] as? String
+            else { continue }
+            ids.insert(id)
+        }
+        return ids
     }
 
     private struct SessionInfo {

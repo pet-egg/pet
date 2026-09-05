@@ -29,6 +29,8 @@ Claude Code CLI는 실행 중인 프로세스마다 `~/.claude/sessions/<pid>.js
 
 > **알아둘 점**: 예전에는 이 세션 파일이 `busy`/`idle`만 안정적으로 채운다고 봤지만, 버전 2.1.197에서 `status: "waiting"` + `waitingFor: "permission prompt"`(권한 승인 대기)가 실제로 채워지는 것을 확인했습니다. 그래서 얼음(권한 대기)까지 세션 파일만으로 표시되고, 헤롱헤롱/실패는 위의 엣지 감지로 만들어내므로 — **모든 상태가 훅 없이** 나옵니다.
 
+> **Orca가 띄운 세션은 제외합니다**: Orca 패널에서 실행한 Claude도 결국 같은 `claude` 프로세스라 `~/.claude/sessions/`에 자기 파일을 씁니다. 그대로 두면 이 소스와 Orca 소스가 같은 세션을 **이중으로** 잡으므로, Claude Code 소스는 Orca 자신의 `last-status.json`을 읽어 그 안의 `providerSession.id`(=sessionId)에 해당하는 세션을 건너뜁니다. 결과적으로 **"Claude Code" = 터미널/독립 실행 세션, "Orca" = Orca 세션**으로 깔끔히 나뉩니다. Orca가 미설치면(파일 없음) 아무것도 제외하지 않아 종전과 동일합니다. Orca는 훅마다 `last-status.json`을 다시 써서 활성 세션의 `id`가 매 스냅샷에 있진 않으므로, sessionId는 세션당 고유하다는 점을 이용해 **"Orca가 한 번이라도 보고한 id"를 누적**해 제외합니다(세션파일이 사라지면 목록에서 정리).
+
 #### Claude Code 훅 (이제 완전히 선택 사항)
 
 달리기·얼음·잠듦·헤롱헤롱·실패는 위에서 설명한 대로 **세션 파일 + 엣지 감지만으로 이미 다 표시됩니다.** 그래도 아래 훅을 설치할 수 있는데, 이제 유일한 이점은 **앱이 꺼져 있던 동안 끝난 턴의 헤롱헤롱/실패가 앱을 다시 켰을 때도 보이는 것**뿐입니다(엣지는 앱이 켜져 있어야 관찰되므로). 훅은 `~/.claude/pet-status.json`에 `done`/`failed`만 기록하고, 워처는 그 세션이 `idle`일 때 자신이 감지한 것 대신(있으면) 훅 값을 씁니다. `ConnorPet`이 사용자 동의 없이 자동으로 설정하지는 않습니다(전역 `~/.claude/settings.json`을 건드리는 일이라 명시적으로 동의한 경우에만 건드리는 게 맞다고 판단했습니다).
@@ -64,7 +66,7 @@ python3 scripts/install_claude_hooks.py --uninstall  # connor-pet이 추가한 �
 | `Stop` | 에이전트가 턴을 마치고 제어권을 사용자에게 돌려줌 | `done` → **헤롱헤롱** (마지막 도구가 실패했으면 `failed` → **실패**) |
 | `SessionEnd` | 세션 종료 | 해당 항목 제거 |
 
-> 예전 버전은 여기에 `UserPromptSubmit`/`PreToolUse`(→`working`)와 `PermissionRequest`/`Notification`(→`blocked`)까지 6개를 걸었지만, 달리기/얼음은 이제 세션 파일에서 직접 나오므로 지웠습니다. 재설치하면 남아 있던 옛 훅은 자동으로 정리됩니다.
+> 예전 버전은 여기에 `UserPromptSubmit`/`PreToolUse`(→`working`)와 `PermissionRequest`/`Notification`(→`blocked`)까지 6개를 걸었지만, 달리기/얼음은 이제 세션 파일에서 직접 나오므로 지웠습니다. 재설치하면 남아 있던 옛 훅은 자동으로 정리됩니다. 정리 전이라도, `pet_hook_status.py`는 모르는 인자(`working`/`blocked` 등)로 불리면 **조용히 아무것도 안 하고 종료(exit 0)**하므로 남은 옛 훅이 에러를 뿜지 않습니다 — 스크립트 경로 자체가 깨진 경우(저장소 이동/삭제)만은 스크립트가 못 돌아 재설치/제거가 필요합니다(앱 설치 사용자는 안정 경로 `~/.claude/pet/`를 써서 안 깨집니다).
 
 #### 실패와 시간 감쇠
 
