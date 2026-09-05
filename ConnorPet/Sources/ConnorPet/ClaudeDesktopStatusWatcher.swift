@@ -12,6 +12,9 @@ struct ClaudeDesktopInput: Equatable {
     /// A response is actively streaming (a "Stop response" control is present in
     /// the accessibility tree).
     let generating: Bool
+    /// A turn is paused waiting for the user to approve a tool/permission — the
+    /// accessibility tree shows an approval card (an Allow *and* a Deny button).
+    let awaitingApproval: Bool
     /// A completion notification arrived that the user hasn't acknowledged
     /// (by hovering the pet) yet.
     let donePending: Bool
@@ -21,17 +24,20 @@ struct ClaudeDesktopInput: Equatable {
 /// highest first — this is the whole behavioral contract, kept pure on purpose:
 ///
 /// 1. not running            → 잠듬 (idle)          — nothing to react to
-/// 2. generating             → 달리기 (running)      — response streaming now
-/// 3. done, unacknowledged   → 헤롱헤롱 (review)      — "go look, it finished"
-/// 4. running, backgrounded  → 얼음 (waiting)        — left on ice, not looking
-/// 5. running, frontmost/idle→ 잠듬 (idle)           — you're here, nothing doing
+/// 2. awaiting approval      → 얼음 (waiting)        — paused, needs your Allow/Deny
+/// 3. generating             → 달리기 (running)      — response streaming now
+/// 4. done, unacknowledged   → 헤롱헤롱 (review)      — "go look, it finished"
+/// 5. running, backgrounded  → 얼음 (waiting)        — left on ice, not looking
+/// 6. running, frontmost/idle→ 잠듬 (idle)           — you're here, nothing doing
 ///
-/// `generating` outranks `donePending` so a *new* turn you just kicked off reads
-/// as 달리기 even if the previous turn's done-notification hasn't been dismissed;
-/// `donePending` outranks `waiting` so a finished background turn nudges you
-/// (헤롱헤롱) instead of silently freezing (얼음).
+/// `awaitingApproval` outranks `generating` on purpose: the "Stop response"
+/// button (our generating signal) stays visible while a turn is paused on an
+/// approval card, so both read true at once — the approval is what the user has
+/// to act on, so it wins. It also outranks `donePending` and the backgrounded
+/// 얼음, and must win even when Claude is frontmost.
 func claudeDesktopAnimation(_ input: ClaudeDesktopInput) -> PetAnimationName {
     guard input.running else { return .idle }
+    if input.awaitingApproval { return .waiting }
     if input.generating { return .running }
     if input.donePending { return .review }
     if !input.frontmost { return .waiting }
@@ -157,9 +163,10 @@ final class ClaudeDesktopStatusWatcher: AgentStatusWatching {
         // Only probe AX while Claude is alive. `nil` == couldn't tell (no
         // permission yet, or the web tree hasn't finished building) → treat as
         // "not generating" but don't fabricate a falling-edge done from it.
-        let axGenerating = running ? probe.isGenerating() : false
-        if axGenerating == nil { logAXUnavailableOnce() }
-        let sampledGenerating = axGenerating ?? false
+        let axSample = running ? probe.sample() : nil
+        if running, axSample == nil { logAXUnavailableOnce() }
+        let sampledGenerating = axSample?.generating ?? false
+        let awaitingApproval = axSample?.awaitingApproval ?? false
 
         if sampledGenerating {
             busyLatch = busyStickyPolls
@@ -170,13 +177,14 @@ final class ClaudeDesktopStatusWatcher: AgentStatusWatching {
 
         // Signal 1's falling edge = a turn just finished. Only count it if the
         // generating stretch was sustained, and let a fresh turn supersede a
-        // stale pending-done.
+        // stale pending-done. A pause *for approval* is not a finished turn, so
+        // don't let that falling edge fabricate a done.
         if generating {
             generatingRun += 1
             pendingDoneFromAX = false
             pendingDoneDeadline = nil
         } else {
-            if wasGenerating, generatingRun >= minGeneratingPollsForDone {
+            if wasGenerating, generatingRun >= minGeneratingPollsForDone, !awaitingApproval {
                 pendingDoneFromAX = true
                 pendingDoneDeadline = now.addingTimeInterval(reviewTimeout)
             }
@@ -195,6 +203,7 @@ final class ClaudeDesktopStatusWatcher: AgentStatusWatching {
             running: running,
             frontmost: frontmost,
             generating: generating,
+            awaitingApproval: awaitingApproval,
             donePending: donePending
         )
         publish(claudeDesktopAnimation(input), input: input)
@@ -252,8 +261,8 @@ final class ClaudeDesktopStatusWatcher: AgentStatusWatching {
         let debug = ProcessInfo.processInfo.environment["CONNORPET_DEBUG"] != nil
         if debug {
             let line = String(
-                format: "[connor-pet] claude-desktop: run=%@ front=%@ gen=%@ done=%@ ax=%@ -> %@\n",
-                d(input.running), d(input.frontmost), d(input.generating),
+                format: "[connor-pet] claude-desktop: run=%@ front=%@ gen=%@ appr=%@ done=%@ ax=%@ -> %@\n",
+                d(input.running), d(input.frontmost), d(input.generating), d(input.awaitingApproval),
                 d(input.donePending), probe.lastReadable ? "Y" : "N", animation.rawValue
             )
             FileHandle.standardError.write(line.data(using: .utf8)!)
@@ -284,12 +293,22 @@ final class ClaudeDesktopStatusWatcher: AgentStatusWatching {
     }
 }
 
-/// Reads whether Claude Desktop is *generating* by inspecting its Accessibility
-/// tree. Electron only exposes its web content to AX after an external process
-/// sets `AXManualAccessibility=true` on the application element, so we do that
-/// once per process and then look for the localized "Stop response" control that
-/// only exists while a turn streams.
+/// Reads Claude Desktop's live turn state from its Accessibility tree. Electron
+/// only exposes its web content to AX after an external process sets
+/// `AXManualAccessibility=true` on the application element, so we do that once
+/// per process and then look for two localized controls:
+///   • the "Stop response" button that exists only while a turn streams
+///     (→ generating), and
+///   • a tool/permission approval card, recognized by having *both* an Allow and
+///     a Deny button (→ awaiting approval).
 final class ClaudeAXProbe {
+    /// One AX read of Claude's live turn state.
+    struct Sample {
+        /// A "Stop response" control is present — a turn is streaming.
+        let generating: Bool
+        /// An approval card is up (Allow + Deny buttons) — paused for the user.
+        let awaitingApproval: Bool
+    }
     /// The process we last forced `AXManualAccessibility` on. Re-forced whenever
     /// Claude relaunches (new pid), which resets the web AX tree.
     private var forcedPid: pid_t = 0
@@ -310,6 +329,16 @@ final class ClaudeAXProbe {
         "stop response", "stop generating",                    // en
     ]
 
+    // A tool/permission approval card is detected by the *co-presence* of an
+    // allow-type and a deny-type button (matched case-insensitively via
+    // `contains`, already lowercased). Requiring both avoids false positives from
+    // an "허용"/"allow" toggle that happens to sit in settings — an approval card
+    // is the only place both appear together. "허용" matches "한 번만 허용"/"항상
+    // 허용"; we deliberately leave out "승인" (it appears in the "도구 호출 승인
+    // 프로토콜 설정" sidebar entry).
+    private let approvalAllowLabels = ["허용", "allow"]
+    private let approvalDenyLabels  = ["거부", "거절", "deny", "reject"]
+
     /// If the app isn't trusted for Accessibility yet, show the system prompt
     /// once. Safe to call repeatedly; only prompts while untrusted.
     func ensurePermissionPrompted() {
@@ -318,10 +347,10 @@ final class ClaudeAXProbe {
         _ = AXIsProcessTrustedWithOptions(opts)
     }
 
-    /// `true`/`false` when we can read the tree; `nil` when we can't tell (no
+    /// A `Sample` when we can read the tree; `nil` when we can't tell (no
     /// Accessibility permission, Claude not running, or the web tree hasn't been
     /// built yet). A `nil` must never be turned into a "turn finished" edge.
-    func isGenerating() -> Bool? {
+    func sample() -> Sample? {
         guard AXIsProcessTrusted() else { lastReadable = false; return nil }
         guard let app = NSWorkspace.shared.runningApplications.first(where: {
             $0.bundleIdentifier == ClaudeDesktopStatusWatcher.bundleID
@@ -350,33 +379,43 @@ final class ClaudeAXProbe {
         lastReadable = true
 
         var visited = 0
+        var found = Buttons()
         for window in windows {
-            if findStopButton(in: window, visited: &visited) { return true }
+            scan(window, visited: &visited, found: &found)
+            if found.allSeen { break }
         }
-        return false
+        return Sample(generating: found.stop, awaitingApproval: found.allow && found.deny)
     }
 
-    private func findStopButton(in element: AXUIElement, visited: inout Int) -> Bool {
-        if visited > maxNodes { return false }
+    /// The button kinds we're hunting for in one tree walk.
+    private struct Buttons {
+        var stop = false, allow = false, deny = false
+        var allSeen: Bool { stop && allow && deny }
+    }
+
+    private func scan(_ element: AXUIElement, visited: inout Int, found: inout Buttons) {
+        if visited > maxNodes || found.allSeen { return }
         visited += 1
 
-        if isStopButton(element) { return true }
-        guard let children = copyChildren(element, attribute: kAXChildrenAttribute) else { return false }
+        classify(element, into: &found)
+        guard let children = copyChildren(element, attribute: kAXChildrenAttribute) else { return }
         for child in children {
-            if findStopButton(in: child, visited: &visited) { return true }
+            scan(child, visited: &visited, found: &found)
+            if found.allSeen { return }
         }
-        return false
     }
 
-    private func isStopButton(_ element: AXUIElement) -> Bool {
-        guard let role = copyString(element, kAXRoleAttribute), role.contains("Button") else { return false }
+    private func classify(_ element: AXUIElement, into found: inout Buttons) {
+        guard let role = copyString(element, kAXRoleAttribute), role.contains("Button") else { return }
         let label = [
             copyString(element, kAXTitleAttribute),
             copyString(element, kAXDescriptionAttribute),
             copyString(element, kAXValueAttribute),
         ].compactMap { $0 }.joined(separator: " ").lowercased()
-        guard !label.isEmpty else { return false }
-        return stopResponseLabels.contains { label.contains($0.lowercased()) }
+        guard !label.isEmpty else { return }
+        if !found.stop, stopResponseLabels.contains(where: { label.contains($0.lowercased()) }) { found.stop = true }
+        if !found.allow, approvalAllowLabels.contains(where: { label.contains($0) }) { found.allow = true }
+        if !found.deny, approvalDenyLabels.contains(where: { label.contains($0) }) { found.deny = true }
     }
 
     // MARK: - AX attribute helpers
