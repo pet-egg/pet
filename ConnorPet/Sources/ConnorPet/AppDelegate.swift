@@ -41,6 +41,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var pendingChallengeBubble = false
     private let challengeWaitSeconds: TimeInterval = 20   // 신청자 카운트다운(막대)
     private let challengeBubbleSeconds: TimeInterval = 10 // 신청받은 쪽 말풍선 노출
+    private let challengeModalSeconds: TimeInterval = 10  // 말풍선을 누른 뒤 뜨는 수락/거절 모달
 
     // Orca's own default (PET_SIZE_DEFAULT=180) still read as "big" next to the
     // small nav-badge-style pet icon the user is comparing against — sized
@@ -349,11 +350,17 @@ selectedStatusSource = Self.savedStatusSource(fallback: Self.availableStatusSour
             guard let self else { return }
             self.pendingChallengeBubble = false
             // Custom game-styled modal (a bold "BATTLE" banner instead of NSAlert's
-            // generic folder/app icon) — see BattleChallengeDialog.
+            // generic folder/app icon) — see BattleChallengeDialog. 10초 안에
+            // 응답하지 않으면 스스로 닫히고, 말풍선을 무시했을 때와 똑같이 무응답으로
+            // 처리한다(신청자 카운트다운이 "응답하지 않음"으로 마무리).
             self.pendingChallengeAlert = true
-            let accepted = BattleDialog.challenge(fromName: fromName)
+            let choice = BattleDialog.challenge(fromName: fromName, timeout: self.challengeModalSeconds)
             self.pendingChallengeAlert = false
-            respond(accepted)
+            switch choice {
+            case .accept: respond(true)
+            case .decline: respond(false)
+            case .timedOut: break // 무응답
+            }
         }
         challengeBubble?.show(above: petFrame, duration: challengeBubbleSeconds) { [weak self] in
             // 시간이 지나도록 누르지 않음 = 무응답. 응답을 보내지 않아, 신청자 쪽은

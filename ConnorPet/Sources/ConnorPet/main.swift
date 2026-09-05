@@ -14,6 +14,13 @@ if ProcessInfo.processInfo.environment["CONNORPET_SELFTEST"] == "hooks" {
     runHookInstallSelfTest()
 }
 
+// Headless modal auto-dismiss test: `CONNORPET_SELFTEST=modal swift run`.
+// Verifies the challenge modal's 10s-style timeout fires during the modal loop
+// (see ModalTimeoutSelfTest). Never returns.
+if ProcessInfo.processInfo.environment["CONNORPET_SELFTEST"] == "modal" {
+    runModalTimeoutSelfTest()
+}
+
 let app = NSApplication.shared
 let delegate = AppDelegate()
 app.delegate = delegate
