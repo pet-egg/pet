@@ -596,11 +596,11 @@ selectedStatusSource = Self.savedStatusSource(fallback: Self.availableStatusSour
         }
 
         // Installs the Claude Code hooks (into ~/.claude/settings.json) that add
-        // the 얼음(blocked)/헤롱헤롱(done) states on top of the plain busy/idle a
-        // DMG user gets by default — the in-app path to
+        // the 헤롱헤롱(done)/실패(failed) states on top of the busy/blocked/idle a
+        // DMG user already gets from the session files — the in-app path to
         // scripts/install_claude_hooks.py, which they can't run without the repo.
         // Checkmark reflects whether the hooks are currently installed.
-        let hookItem = NSMenuItem(title: "Claude Code 상태 훅 (얼음/헤롱헤롱)", action: #selector(toggleClaudeHooks), keyEquivalent: "")
+        let hookItem = NSMenuItem(title: "Claude Code 상태 훅 (헤롱헤롱/실패)", action: #selector(toggleClaudeHooks), keyEquivalent: "")
         hookItem.target = self
         hookItem.state = ClaudeHookInstaller.isInstalled() ? .on : .off
         menu.addItem(hookItem)
@@ -652,7 +652,7 @@ selectedStatusSource = Self.savedStatusSource(fallback: Self.availableStatusSour
         if ClaudeHookInstaller.isInstalled() {
             guard BattleDialog.confirm(
                 title: "Claude Code 상태 훅 제거",
-                message: "~/.claude/settings.json에서 connor-pet이 추가한\n훅을 제거합니다. 얼음/헤롱헤롱 상태 표시가 꺼지고\nbusy/idle 만 남습니다.\n\n다른 훅 설정은 건드리지 않습니다.",
+                message: "~/.claude/settings.json에서 connor-pet이 추가한\n훅을 제거합니다. 헤롱헤롱/실패 표시가 꺼지고\n달리기/얼음/잠듦(세션파일 기준)만 남습니다.\n\n다른 훅 설정은 건드리지 않습니다.",
                 confirmTitle: "제거"
             ) else { return }
             do {
@@ -664,12 +664,12 @@ selectedStatusSource = Self.savedStatusSource(fallback: Self.availableStatusSour
         } else {
             guard BattleDialog.confirm(
                 title: "Claude Code 상태 훅 설치",
-                message: "~/.claude/settings.json에 6개의 훅을 추가해\n얼음(권한 대기)·헤롱헤롱(작업 완료) 상태를\n표시합니다.\n\n기존 설정은 타임스탬프를 붙여 백업하고,\n다른 훅은 건드리지 않습니다. (python3 필요)",
+                message: "~/.claude/settings.json에 2개의 훅(Stop·SessionEnd)을\n추가해 헤롱헤롱(작업 완료)·실패 상태를 표시합니다.\n(달리기/얼음/잠듦은 훅 없이 세션파일로 이미 표시돼요.)\n\n기존 설정은 타임스탬프를 붙여 백업하고,\n다른 훅은 건드리지 않습니다. (python3 필요)",
                 confirmTitle: "설치"
             ) else { return }
             do {
                 try ClaudeHookInstaller.install()
-                showInfo(title: "훅 설치 완료", text: "Claude Code 상태 훅을 설치했어요.\n소스가 'Claude Code'일 때 얼음/헤롱헤롱까지 보여요.\n실행 중인 세션은 다음 턴부터 반영돼요.")
+                showInfo(title: "훅 설치 완료", text: "Claude Code 상태 훅을 설치했어요.\n소스가 'Claude Code'일 때 헤롱헤롱/실패까지 보여요.\n실행 중인 세션은 다음 턴부터 반영돼요.")
             } catch {
                 showInfo(title: "훅 설치 실패", text: error.localizedDescription)
             }

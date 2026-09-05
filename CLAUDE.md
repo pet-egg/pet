@@ -6,7 +6,7 @@ Orca 또는 Claude Code의 프로젝트/에이전트 상태에 반응하는 데�
 
 - `ConnorPet/` — 실제 결과물인 독립 macOS 앱 (Swift Package, Xcode 불필요)
   - `Sources/ConnorPet/OrcaStatusWatcher.swift` — `last-status.json` 폴링(1s) + 상태 집계 (Orca 소스)
-  - `Sources/ConnorPet/ClaudeCodeStatusWatcher.swift` — `~/.claude/sessions/*.json`(항상) + `~/.claude/connor-pet-status.json`(훅 설치 시)을 250ms마다 폴링해 병합 (Claude Code 소스, 기본값)
+  - `Sources/ConnorPet/ClaudeCodeStatusWatcher.swift` — `~/.claude/sessions/*.json`(권위 소스, 항상) + `~/.claude/pet-status.json`(훅 오버레이, 설치 시)을 250ms마다 폴링해 병합 (Claude Code 소스, 기본값). 세션파일 `status`(busy→달리기 / waiting+waitingFor→얼음 / idle→잠듦)가 달리기·얼음·잠듦을 정하고, 훅 파일은 그 세션이 idle일 때만 done/failed(헤롱헤롱/실패)를 덧씌운다. 살아있는 세션에 매칭 안 되는 훅 항목은 버림 — 낡은 blocked가 진행 중 세션을 얼리던 버그 방지
   - `Sources/ConnorPet/ClaudeDesktopStatusWatcher.swift` — Claude 데스크톱 앱 소스. 렌더러 CPU(신호1)+알림센터 DB(신호2)를 500ms 폴링해 잠듦/달리기/얼음/헤롱헤롱 판정. AX가 Claude 웹 콘텐츠를 안 뿜어서 CPU 휴리스틱을 씀
   - `Sources/ConnorPet/ClaudeProcessActivity.swift` — Claude 프로세스 트리 CPU 샘플러(`proc_pid_rusage`, mach 틱→ns timebase 변환). "생성 중=달리기" 신호
   - `Sources/ConnorPet/NotificationCenterDB.swift` — macOS 알림센터 SQLite DB 읽기(Full Disk Access 필요). Claude 완료 알림="헤롱헤롱" 신호. `isReadable`이 사실상 "FDA 권한 있음" 프록시(baseline은 이 readable 여부로만 잡는다 — 비어 있어도 첫 실제 알림이 헤롱헤롱을 띄우도록)
@@ -20,7 +20,7 @@ Orca 또는 Claude Code의 프로젝트/에이전트 상태에 반응하는 데�
   - `Sources/ConnorPet/BattleChallengeDialog.swift` — 대전 신청 수락/거절 모달(`BattleDialog`). accessory 앱이라 `NSAlert`이 폴더/앱 아이콘을 띄우는 문제를 피하려고, 커스텀 borderless `NSPanel`(canBecomeKey override)에 **"BATTLE" 배너**(코드로 그린 그라디언트) + 초록 수락 버튼(layer-backed `PillButton`, `bezelColor`은 불안정해서 안 씀)로 직접 그림. `runModal`로 동기 반환
   - `Sources/ConnorPet/BattleSelfTest.swift` — `CONNORPET_SELFTEST=battle swift run`으로 도는 헤드리스 핸드셰이크 검증(한 프로세스에서 A/B 발견→신청→수락→결과 합의까지 확인, `SELFTEST PASS`)
   - `Sources/ConnorPet/AppDelegate.swift` — 앱 연결, 메뉴바 아이콘/펫 선택/소스 선택/경험치 바 토글/진화 사용 토글/**Claude Code 상태 훅 설치 토글**/**전체 디스크 접근 권한 열기**/대전 메뉴 + 경험치%에 따른 진화 스프라이트 교체(`evolutionChains`, 임계치·on-off는 사용자 설정)
-  - `Sources/ConnorPet/ClaudeHookInstaller.swift` — `scripts/install_claude_hooks.py`를 Swift로 포팅한 인앱 설치기. DMG로 설치해 저장소가 없는 사용자를 위해, 번들에 넣어 둔 훅 핸들러(`Resources/hooks/claude_hook_status.py`)를 `~/.claude/connor-pet/`로 복사한 뒤 `~/.claude/settings.json`에 같은 6개 훅을 병합/제거(`JSONSerialization`으로 느슨하게 읽어 기존 설정·다른 훅은 보존, 쓰기 전 타임스탬프 백업). AppDelegate 메뉴의 "Claude Code 상태 훅 (얼음/헤롱헤롱)" 항목이 이걸 호출(설치 여부=체크 표시)
+  - `Sources/ConnorPet/ClaudeHookInstaller.swift` — `scripts/install_claude_hooks.py`를 Swift로 포팅한 인앱 설치기. DMG로 설치해 저장소가 없는 사용자를 위해, 번들에 넣어 둔 훅 핸들러(`Resources/hooks/pet_hook_status.py`)를 `~/.claude/pet/`로 복사한 뒤 `~/.claude/settings.json`에 같은 2개 훅(Stop→done, SessionEnd→remove)을 병합/제거(`JSONSerialization`으로 느슨하게 읽어 기존 설정·다른 훅은 보존, 쓰기 전 타임스탬프 백업). 설치 시 옛 훅(new `pet_hook_status.py`/legacy `claude_hook_status.py` 둘 다 인식)을 먼저 걷어내고 다시 넣어 재실행·마이그레이션에 안전. AppDelegate 메뉴의 "Claude Code 상태 훅 (헤롱헤롱/실패)" 항목이 이걸 호출(설치 여부=체크 표시)
   - `Sources/ConnorPet/HookInstallSelfTest.swift` — `CONNORPET_SELFTEST=hooks swift run`으로 도는 헤드리스 설치기 검증(임시 홈에 실제 `settings.json`을 시드해 설치→재설치 무동작→제거까지, 남의 훅이 보존되는지 확인, `SELFTEST PASS`)
   - `Sources/ConnorPet/Resources/pets/<slug>/` — 펫별 `spritesheet.png` + `pet.json` 번들 사본
 - `<slug>.codex-pet/` (totodile/ditto/charmander/squirtle/geodude/eevee/chikorita/torchic/togepi) — Orca에 직접 임포트 가능한 번들
@@ -28,7 +28,7 @@ Orca 또는 Claude Code의 프로젝트/에이전트 상태에 반응하는 데�
 - `scripts/make_app.sh` — release 빌드를 독립 실행형 `ConnorPet.app`으로 감싸서 `~/Applications`에 설치 (터미널과 무관하게 상주시키는 정식 실행 경로)
 - `scripts/simulate_agent.py` — 실제 에이전트 없이 `last-status.json`에 가짜 상태 주입 (Orca 소스 전용)
 - `scripts/install_claude_hooks.py` — 위 훅 핸들러를 `~/.claude/settings.json`에 병합/제거(`--uninstall`)하는 설치 스크립트. 기존 훅(matcher 걸린 것 포함) 안 건드리고, 재실행해도 중복 안 됨
-- `scripts/claude_hook_status.py` — Claude Code 훅 핸들러 (선택 설치, README "Claude Code 훅으로 얼음/헤롱헤롱까지 보기" 참고). `~/.claude/settings.json`은 전역 설정이라 **사용자 명시적 동의 없이 이 저장소가 대신 실행하지 않는다** — 스크립트/README/메뉴바 버튼으로 안내만 하고, 사용자가 직접 돌리거나(스크립트) 메뉴에서 명시적으로 눌러야(인앱) 실행. 이 파일의 사본이 `ConnorPet/Sources/ConnorPet/Resources/hooks/claude_hook_status.py`에도 있다(아래 동기화 규칙 참고)
+- `scripts/pet_hook_status.py` — Claude Code 훅 핸들러 (선택 설치, README "Claude Code 훅으로 헤롱헤롱/실패까지 보기" 참고). Stop/SessionEnd에서만 돌며 `~/.claude/pet-status.json`에 done/failed/remove만 기록(달리기·얼음은 세션파일이 담당). `~/.claude/settings.json`은 전역 설정이라 **사용자 명시적 동의 없이 이 저장소가 대신 실행하지 않는다** — 스크립트/README/메뉴바 버튼으로 안내만 하고, 사용자가 직접 돌리거나(스크립트) 메뉴에서 명시적으로 눌러야(인앱) 실행. 이 파일의 사본이 `ConnorPet/Sources/ConnorPet/Resources/hooks/pet_hook_status.py`에도 있다(아래 동기화 규칙 참고)
 - `preview/index.html` — 브라우저 전용 미리보기 (Orca 설치 불필요)
 - `.github/workflows/build-pet-dmg.yml` — base pet 하나만 골라 `.app`/`.dmg`로 빌드하는 수동(`workflow_dispatch`) CI 파이프라인. `pet` 드롭다운 옵션이 `availablePetSlugs`와 동기화되어 있어야 함(아래 "작업 시 반드시 지킬 것" 참고)
 
@@ -64,7 +64,7 @@ UI/동작을 변경했으면 반드시 `swift run`으로 실제 앱을 띄워서
   gh repo edit --description "<새 설명>"
   ```
   README와 실제 동작이 어긋나는 부분(예: 코드에서 바뀐 아이콘·플래그·경로가 README에 옛날 그대로 남아있는 경우)을 발견하면 관련 작업이 아니어도 그 자리에서 같이 고칠 것.
-- **훅 핸들러 두 벌 항상 일치**: `scripts/claude_hook_status.py`(저장소/스크립트 설치용)와 `ConnorPet/Sources/ConnorPet/Resources/hooks/claude_hook_status.py`(앱 번들에 넣어 메뉴바 버튼이 `~/.claude/connor-pet/`로 복사하는 사본)는 **바이트 단위로 동일**해야 한다. 한쪽을 고치면 반드시 다른 쪽에 복사할 것(`cp scripts/claude_hook_status.py ConnorPet/Sources/ConnorPet/Resources/hooks/claude_hook_status.py`). 어긋나면 스크립트로 설치한 사용자와 앱으로 설치한 사용자의 동작이 달라진다. 변경했다면 `CONNORPET_SELFTEST=hooks swift run`으로 설치기 회귀도 함께 확인.
+- **훅 핸들러 두 벌 항상 일치**: `scripts/pet_hook_status.py`(저장소/스크립트 설치용)와 `ConnorPet/Sources/ConnorPet/Resources/hooks/pet_hook_status.py`(앱 번들에 넣어 메뉴바 버튼이 `~/.claude/pet/`로 복사하는 사본)는 **바이트 단위로 동일**해야 한다. 한쪽을 고치면 반드시 다른 쪽에 복사할 것(`cp scripts/pet_hook_status.py ConnorPet/Sources/ConnorPet/Resources/hooks/pet_hook_status.py`). 어긋나면 스크립트로 설치한 사용자와 앱으로 설치한 사용자의 동작이 달라진다. 변경했다면 `CONNORPET_SELFTEST=hooks swift run`으로 설치기 회귀도 함께 확인.
 - **새 포켓몬(펫) 추가 시 GitHub Actions 목록도 같이 갱신**: `AppDelegate.swift`의 `availablePetSlugs`에 슬러그를 추가하면(`scripts/build_sheet.py`의 `PETS`도 함께), `.github/workflows/build-pet-dmg.yml`의 `workflow_dispatch.inputs.pet.options`에도 같은 펫을 `"<한글 이름> (<영문 slug 대문자화>)"` 형식(각 펫 `pet.json`의 `displayName`과 동일한 표기)으로 추가할 것. 둘이 어긋나면 Actions에서 그 펫을 선택할 방법이 없어진다 — 실제로 토게피 추가 때 이 목록을 빠뜨렸던 적이 있음.
 - **브랜치 전략: GitHub Flow**: `main`은 항상 배포 가능한 상태로 유지하고, 모든 작업은 `main`에서 분기한 **기능 브랜치**에서 한다. 브랜치 이름은 `feature/<간단한-설명>`(kebab-case) 형식으로 짓는다 (예: `feature/lan-multiplayer-battle`). 작업이 끝나면 그 기능 브랜치를 push하고 `main`으로 향하는 PR을 열어 리뷰 후 병합한다. `main`에 직접 push하지 않는다.
 - **커밋 메시지는 항상 한글로 작성**: 제목/본문 모두 한글로 쓸 것 (`Co-Authored-By:` 트레일러 등 고정 형식 줄은 예외).

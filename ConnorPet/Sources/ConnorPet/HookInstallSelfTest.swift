@@ -6,8 +6,9 @@ import Foundation
 /// settings.json — the caller's real ~/.claude/settings.json if present, so we
 /// exercise the merge against actual foreign hooks — then asserts:
 ///
-///   • install() adds our six events and is idempotent (a second install is a
-///     no-op that doesn't duplicate entries),
+///   • install() adds our two events (Stop/SessionEnd) and migrates away a
+///     legacy connor-pet entry (claude_hook_status.py), converging to exactly
+///     two entries; a second install stays at two (no duplication),
 ///   • every pre-existing foreign hook survives untouched,
 ///   • uninstall() removes exactly our entries and restores the original doc.
 ///
@@ -62,8 +63,7 @@ func runHookInstallSelfTest() -> Never {
         for (_, blocks) in hooks {
             for block in (blocks as? [[String: Any]] ?? []) {
                 for hk in (block["hooks"] as? [[String: Any]] ?? []) {
-                    let cmd = hk["command"] as? String ?? ""
-                    if !cmd.contains("claude_hook_status.py") { n += 1 }
+                    if !isPetCommand(hk["command"] as? String ?? "") { n += 1 }
                 }
             }
         }
@@ -75,30 +75,46 @@ func runHookInstallSelfTest() -> Never {
 
     if ClaudeHookInstaller.isInstalled() { fail("reports installed before any install") }
 
+    // Simulate a legacy six-hook install (claude_hook_status.py) to prove
+    // install() detects and migrates it away.
+    if var doc = (try? JSONSerialization.jsonObject(with: (try? Data(contentsOf: settingsURL)) ?? Data())) as? [String: Any] {
+        var hooks = doc["hooks"] as? [String: Any] ?? [:]
+        var blocks = hooks["Notification"] as? [[String: Any]] ?? []
+        blocks.append(["hooks": [["type": "command", "command": "python3 /old/claude_hook_status.py blocked"]]])
+        hooks["Notification"] = blocks
+        doc["hooks"] = hooks
+        try! JSONSerialization.data(withJSONObject: doc).write(to: settingsURL)
+    }
+    if !ClaudeHookInstaller.isInstalled() { fail("legacy connor-pet entry not detected as installed") }
+
     // First install.
     let added: [String]
     do { added = try ClaudeHookInstaller.install() }
     catch { fail("install threw: \(error)") }
     if !ClaudeHookInstaller.isInstalled() { fail("not installed after install()") }
-    if Set(added) != Set(["UserPromptSubmit", "PreToolUse", "PermissionRequest", "Notification", "Stop", "SessionEnd"]) {
+    if Set(added) != Set(["Stop", "SessionEnd"]) {
         fail("install added unexpected set: \(added)")
     }
+    // The legacy entry must be gone after migration.
+    if hasLegacyEntry(loadHooks()) { fail("legacy claude_hook_status.py entry survived install()") }
 
     // The bundled script must have been copied out.
-    let script = tmpHome.appendingPathComponent(".claude/connor-pet/claude_hook_status.py")
+    let script = tmpHome.appendingPathComponent(".claude/pet/pet_hook_status.py")
     if !fm.fileExists(atPath: script.path) { fail("bundled hook script not copied to \(script.path)") }
 
-    // Idempotency: a second install adds nothing and doesn't duplicate.
+    // Idempotency: a second install converges to the same set (it purges then
+    // re-adds), and — verified by the count check below — never duplicates.
     let addedAgain = (try? ClaudeHookInstaller.install()) ?? ["ERR"]
-    if !addedAgain.isEmpty { fail("second install was not a no-op: \(addedAgain)") }
+    if Set(addedAgain) != Set(["Stop", "SessionEnd"]) { fail("second install changed the set: \(addedAgain)") }
 
     let afterInstall = loadHooks()
     if foreignEntryCount(afterInstall) != foreignBefore {
         fail("foreign hook entries changed on install: \(foreignBefore) -> \(foreignEntryCount(afterInstall))")
     }
-    // Exactly six of our entries, no more (idempotency didn't duplicate).
+    // Exactly two of our entries, no more (migration + idempotency: the legacy
+    // entry was folded in, not stacked on top).
     let ourCount = countOurEntries(afterInstall)
-    if ourCount != 6 { fail("expected 6 connor-pet entries after install, got \(ourCount)") }
+    if ourCount != 2 { fail("expected 2 pet entries after install, got \(ourCount)") }
 
     // Uninstall restores the doc.
     do { _ = try ClaudeHookInstaller.uninstall() }
@@ -116,12 +132,29 @@ func runHookInstallSelfTest() -> Never {
     exit(0)
 }
 
+/// Our entries are recognized by either handler filename — matching
+/// `ClaudeHookInstaller.isPetEntry` / the Python installer's `is_pet_entry`.
+private func isPetCommand(_ cmd: String) -> Bool {
+    cmd.contains("pet_hook_status.py") || cmd.contains("claude_hook_status.py")
+}
+
+private func hasLegacyEntry(_ hooks: [String: Any]) -> Bool {
+    for (_, blocks) in hooks {
+        for block in (blocks as? [[String: Any]] ?? []) {
+            for hk in (block["hooks"] as? [[String: Any]] ?? []) {
+                if (hk["command"] as? String ?? "").contains("claude_hook_status.py") { return true }
+            }
+        }
+    }
+    return false
+}
+
 private func countOurEntries(_ hooks: [String: Any]) -> Int {
     var n = 0
     for (_, blocks) in hooks {
         for block in (blocks as? [[String: Any]] ?? []) {
             for hk in (block["hooks"] as? [[String: Any]] ?? []) {
-                if (hk["command"] as? String ?? "").contains("claude_hook_status.py") { n += 1 }
+                if isPetCommand(hk["command"] as? String ?? "") { n += 1 }
             }
         }
     }
@@ -139,7 +172,7 @@ private func stripConnorPetEntries(from data: Data) -> Data? {
         var kept: [[String: Any]] = []
         for var block in blocks {
             let entries = block["hooks"] as? [[String: Any]] ?? []
-            let filtered = entries.filter { !(($0["command"] as? String ?? "").contains("claude_hook_status.py")) }
+            let filtered = entries.filter { !isPetCommand($0["command"] as? String ?? "") }
             if filtered.isEmpty { continue }
             block["hooks"] = filtered
             kept.append(block)

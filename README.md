@@ -23,20 +23,20 @@
 
 ### Claude Code 소스 (`ClaudeCodeStatusWatcher.swift`, 기본값)
 
-Claude Code CLI는 실행 중인 프로세스마다 `~/.claude/sessions/<pid>.json`에 자기 상태를 계속 기록합니다 (`claude agents`/`claude agents --json`이 읽는 것과 같은 파일). `ConnorPet`은 이 디렉토리를 **250ms마다** 폴링해서, 살아있는 프로세스(`kill(pid, 0)`으로 확인)의 `status`/`tempo` 필드를 Orca와 같은 `working`/`blocked`/`idle` 상태로 매핑한 뒤 동일한 `agentStateAnimation`에 넣습니다. 열려있는 **모든** Claude Code 세션(프로젝트 무관)을 집계하는 것도 Orca 소스와 동일합니다.
+Claude Code CLI는 실행 중인 프로세스마다 `~/.claude/sessions/<pid>.json`에 자기 상태를 계속 기록합니다 (`claude agents`/`claude agents --json`이 읽는 것과 같은 파일). `ConnorPet`은 이 디렉토리를 **250ms마다** 폴링해서, 살아있는 프로세스(`kill(pid, 0)`으로 확인)의 `status` 필드를 Orca와 같은 상태로 매핑한 뒤 동일한 `agentStateAnimation`에 넣습니다: `busy` → `working`(달리기), `waiting` → `blocked`(얼음, `waitingFor`에 "permission prompt" 등이 담김), 그 외 → `idle`(잠듦). 이 세션 파일은 Claude Code가 **항상 현재값으로 갱신**하고 PID로 키를 잡으므로, 죽은 세션이 유령처럼 남지 않습니다(alive 체크로 걸러짐). 열려있는 **모든** Claude Code 세션(프로젝트 무관)을 집계하는 것도 Orca 소스와 동일합니다.
 
-> **알아둘 점**: 실제로 확인해보니 이 세션 파일은 `status: "busy" | "idle"`만 안정적으로 채워지고, 더 세밀한 `tempo: "active" | "idle" | "blocked"`(권한 프롬프트 대기 등)는 이 버전(2.1.197)에서는 관찰되지 않았습니다. 이것만으로는 얼음(권한 승인 대기)·헤롱헤롱(작업 완료) 상태를 구분할 수 없어서, 아래 훅을 추가로 설치하면 더 정확한 상태를 볼 수 있습니다.
+> **알아둘 점**: 예전에는 이 세션 파일이 `busy`/`idle`만 안정적으로 채운다고 봤지만, 버전 2.1.197에서 `status: "waiting"` + `waitingFor: "permission prompt"`(권한 승인 대기)가 실제로 채워지는 것을 확인했습니다. 그래서 **얼음(권한 대기)까지 훅 없이 세션 파일만으로** 표시됩니다. 세션 파일이 표현 못 하는 건 "작업이 끝나 리뷰를 기다림"(헤롱헤롱)과 "실패"뿐이라, 이 둘만 아래 훅으로 얹습니다.
 
-#### Claude Code 훅으로 얼음/헤롱헤롱까지 보기 (선택 사항)
+#### Claude Code 훅으로 헤롱헤롱/실패까지 보기 (선택 사항)
 
-세션 파일 폴링만으로는 `busy`/`idle` 두 가지만 구분되고, "권한 승인창이 떠서 멈춰있음"(얼음)이나 "작업이 끝나 리뷰를 기다림"(헤롱헤롱)에 대응하는 신호가 없습니다. 이 신호는 Claude Code의 [hooks](https://docs.claude.com/en/docs/claude-code/hooks)로만 얻을 수 있어서, 원한다면 아래 방법 중 하나로 설정하면 됩니다 — `ConnorPet`이 사용자 동의 없이 자동으로 설정하지는 않습니다(전역 `~/.claude/settings.json`을 건드리는 일이라 명시적으로 동의한 경우에만 건드리는 게 맞다고 판단했습니다).
+달리기·얼음·잠듦은 세션 파일만으로 이미 표시됩니다. 세션 파일에 없는 건 "턴이 끝나 리뷰를 기다림"(헤롱헤롱)과 "마지막 도구가 실패함"(실패)뿐인데, 이 둘은 Claude Code의 [hooks](https://docs.claude.com/en/docs/claude-code/hooks)로만 얻을 수 있어서 원한다면 아래 방법 중 하나로 설정하면 됩니다 — `ConnorPet`이 사용자 동의 없이 자동으로 설정하지는 않습니다(전역 `~/.claude/settings.json`을 건드리는 일이라 명시적으로 동의한 경우에만 건드리는 게 맞다고 판단했습니다).
 
-**메뉴바 버튼으로 설치 (DMG/앱 사용자 권장)** — 메뉴바 아이콘 메뉴의 **"Claude Code 상태 훅 (얼음/헤롱헤롱)"** 을 누르면 바로 설치됩니다. DMG로 설치해 터미널에서 스크립트를 돌릴 수 없는 경우를 위한 경로로, 앱이 번들에 넣어 둔 훅 핸들러를 `~/.claude/connor-pet/claude_hook_status.py`로 복사한 뒤 아래 스크립트와 **똑같은 6개 훅**을 병합합니다(설치 전 확인 창이 뜨고, 기존 `settings.json`은 백업합니다). 체크 표시로 현재 설치 여부를 알 수 있고, 다시 누르면 우리가 추가한 항목만 제거합니다. (훅 핸들러는 `python3`로 실행되므로 `python3`가 필요합니다.)
+**메뉴바 버튼으로 설치 (DMG/앱 사용자 권장)** — 메뉴바 아이콘 메뉴의 **"Claude Code 상태 훅 (헤롱헤롱/실패)"** 을 누르면 바로 설치됩니다. DMG로 설치해 터미널에서 스크립트를 돌릴 수 없는 경우를 위한 경로로, 앱이 번들에 넣어 둔 훅 핸들러를 `~/.claude/pet/pet_hook_status.py`로 복사한 뒤 아래 스크립트와 **똑같은 2개 훅**을 병합합니다(설치 전 확인 창이 뜨고, 기존 `settings.json`은 백업합니다). 체크 표시로 현재 설치 여부를 알 수 있고, 다시 누르면 우리가 추가한 항목만 제거합니다. 예전 6개 훅 설치가 남아 있으면 다시 누를 때 자동으로 2개로 정리(마이그레이션)됩니다. (훅 핸들러는 `python3`로 실행되므로 `python3`가 필요합니다.)
 
-**스크립트로 설치** — 저장소를 클론해 쓰는 경우. 필요한 6개 훅을 `~/.claude/settings.json`에 병합해줍니다. 이미 있는 다른 훅(matcher가 걸린 것 포함)은 절대 건드리지 않고, 이 저장소가 어디 클론됐든 경로도 알아서 맞춰줍니다. 실행 전 기존 파일을 타임스탬프 붙여 백업하고, 몇 번을 다시 실행해도 중복 추가되지 않습니다:
+**스크립트로 설치** — 저장소를 클론해 쓰는 경우. 필요한 2개 훅을 `~/.claude/settings.json`에 병합해줍니다. 이미 있는 다른 훅(matcher가 걸린 것 포함)은 절대 건드리지 않고, 이 저장소가 어디 클론됐든 경로도 알아서 맞춰줍니다. 실행 전 기존 파일을 타임스탬프 붙여 백업하고, 몇 번을 다시 실행해도 (예전 6개 훅이 있었다면 2개로 정리하며) 항상 같은 상태로 수렴합니다:
 
 ```sh
-python3 scripts/install_claude_hooks.py             # 설치
+python3 scripts/install_claude_hooks.py             # 설치 (또는 예전 훅 마이그레이션)
 python3 scripts/install_claude_hooks.py --uninstall  # connor-pet이 추가한 항목만 제거
 ```
 
@@ -45,23 +45,11 @@ python3 scripts/install_claude_hooks.py --uninstall  # connor-pet이 추가한 �
 ```json
 {
   "hooks": {
-    "UserPromptSubmit": [
-      { "hooks": [{ "type": "command", "command": "python3 /path/to/pet/scripts/claude_hook_status.py working" }] }
-    ],
-    "PreToolUse": [
-      { "hooks": [{ "type": "command", "command": "python3 /path/to/pet/scripts/claude_hook_status.py working" }] }
-    ],
-    "PermissionRequest": [
-      { "hooks": [{ "type": "command", "command": "python3 /path/to/pet/scripts/claude_hook_status.py blocked" }] }
-    ],
-    "Notification": [
-      { "hooks": [{ "type": "command", "command": "python3 /path/to/pet/scripts/claude_hook_status.py blocked" }] }
-    ],
     "Stop": [
-      { "hooks": [{ "type": "command", "command": "python3 /path/to/pet/scripts/claude_hook_status.py done" }] }
+      { "hooks": [{ "type": "command", "command": "python3 /path/to/pet/scripts/pet_hook_status.py done" }] }
     ],
     "SessionEnd": [
-      { "hooks": [{ "type": "command", "command": "python3 /path/to/pet/scripts/claude_hook_status.py remove" }] }
+      { "hooks": [{ "type": "command", "command": "python3 /path/to/pet/scripts/pet_hook_status.py remove" }] }
     ]
   }
 }
@@ -71,16 +59,14 @@ python3 scripts/install_claude_hooks.py --uninstall  # connor-pet이 추가한 �
 
 | 훅 | 발생 시점 | 기록하는 상태 |
 |---|---|---|
-| `UserPromptSubmit` | 사용자가 새 프롬프트를 보냄 | `working` |
-| `PreToolUse` | 도구 실행 직전 (승인 후 재개 포함) | `working` |
-| `PermissionRequest` | 권한 승인창이 뜸 (Orca 자체 훅도 이 이벤트를 씀 — `Notification`보다 승인창에 특화된 신호) | `blocked` → **얼음** |
-| `Notification` | 권한 승인 필요 또는 60초 이상 입력 대기 (`PermissionRequest`와 겹칠 수 있지만 놓치지 않도록 같이 걸어둠) | `blocked` → **얼음** |
-| `Stop` | 에이전트가 턴을 마치고 제어권을 사용자에게 돌려줌 | `done` → **헤롱헤롱** |
+| `Stop` | 에이전트가 턴을 마치고 제어권을 사용자에게 돌려줌 | `done` → **헤롱헤롱** (마지막 도구가 실패했으면 `failed` → **실패**) |
 | `SessionEnd` | 세션 종료 | 해당 항목 제거 |
+
+> 예전 버전은 여기에 `UserPromptSubmit`/`PreToolUse`(→`working`)와 `PermissionRequest`/`Notification`(→`blocked`)까지 6개를 걸었지만, 달리기/얼음은 이제 세션 파일에서 직접 나오므로 지웠습니다. 재설치하면 남아 있던 옛 훅은 자동으로 정리됩니다.
 
 #### 실패와 시간 감쇠
 
-훅으로 들어오는 상태 위에 두 가지가 더 얹혀 있습니다.
+세션 파일과 훅에서 들어오는 상태 위에 두 가지가 더 얹혀 있습니다.
 
 **도구 실패 → `failed`(붉은 떨림).** PostToolUse 훅은 **도구가 실패하면 발화하지 않습니다**
 (실제 세션에서 확인). 그래서 실패는 훅 이벤트로는 절대 도달하지 않습니다. 대신 훅 페이로드에
@@ -89,14 +75,14 @@ python3 scripts/install_claude_hooks.py --uninstall  # connor-pet이 추가한 �
 볼 필요가 없고 마지막 도구가 실패한 채로 끝난 턴은 봐야 하기 때문입니다. 트랜스크립트는
 수십 MB 라서 끝에서 256KB 만 seek 해서 읽습니다 (31MB 파일 기준 1ms).
 
-**시간이 지나면 상태가 내려갑니다** — `failed` 30초 → `done`, `done` 5분 → 잠듦,
-`working` 15분 → 잠듦. 이 판단은 훅이 아니라 **읽는 쪽(`PetAnimationState.swift` 의
-`decayStaleStates`)** 이 합니다. 훅은 세션이 살아 있을 때만 발화하므로, 마지막 세션이 끝나면
-파일을 갱신할 주체가 없어져 시간 기반 판단을 쓸 수가 없습니다. 워처는 어차피 폴링하고 있으니
-거기서 판단하면 공짜이고, Orca 소스에도 똑같이 적용됩니다. `얼음(blocked/waiting)`은 사용자가
-직접 응답해야 하는 상태라 감쇠하지 않습니다.
+**시간이 지나면 상태가 내려갑니다** — `failed` 30초 → `done`, `done` 5분 → 잠듦.
+이 판단은 훅이 아니라 **읽는 쪽(`PetAnimationState.swift` 의 `decayStaleStates`)** 이 합니다.
+훅은 세션이 살아 있을 때만 발화하므로, 마지막 세션이 끝나면 파일을 갱신할 주체가 없어져
+시간 기반 판단을 쓸 수가 없습니다. 워처는 어차피 폴링하고 있으니 거기서 판단하면 공짜이고,
+Orca 소스에도 똑같이 적용됩니다. `달리기(working)`·`얼음(blocked)`은 세션 파일이 매 순간
+현재값으로 갱신하므로(레벨 트리거) 감쇠 규칙이 따로 필요 없습니다.
 
-`scripts/claude_hook_status.py`는 각 훅이 stdin으로 받는 JSON(`session_id`/`cwd`/`transcript_path` 포함)을 읽어서 `~/.claude/connor-pet-status.json`을 Orca의 `last-status.json`과 같은 형태로 갱신합니다(동시에 여러 세션이 훅을 발생시켜도 안전하도록 `fcntl.flock`으로 잠그고 원자적으로 씀). `ClaudeCodeStatusWatcher`는 이 파일이 있으면 세션 파일의 busy/idle보다 우선해서 씁니다 — 훅을 설정 안 해도 앱은 그대로 동작하고(예전처럼 busy/idle만), 설정하면 자동으로 더 정확해집니다.
+`scripts/pet_hook_status.py`는 각 훅이 stdin으로 받는 JSON(`session_id`/`cwd`/`transcript_path` 포함)을 읽어서 `~/.claude/pet-status.json`을 Orca의 `last-status.json`과 같은 형태로 갱신합니다(동시에 여러 세션이 훅을 발생시켜도 안전하도록 `fcntl.flock`으로 잠그고 원자적으로 씀). `ClaudeCodeStatusWatcher`에서 **권위 소스는 세션 파일**입니다: 달리기/얼음/잠듦은 세션 파일이 정하고, 훅 파일은 그 세션이 `idle`일 때만 `done`/`failed`를 덧씌우는 오버레이로만 쓰입니다(살아있는 세션에 대응하는 항목이 없는 훅 항목은 버립니다). 그래서 낡은 훅 항목이 진행 중인 세션을 얼려버리던 예전 버그가 사라졌습니다 — 훅을 설정 안 해도 달리기/얼음/잠듦은 그대로 나오고, 설정하면 헤롱헤롱/실패가 더해집니다.
 
 **헤롱헤롱이 사라지는 시점**: `done`은 그 세션이 다시 `working`으로 바뀌기 전까지, 또는 **펫에 마우스를 올리기 전까지** 유지됩니다(둘 중 먼저 오는 쪽). 펫을 호버하면 `AgentStatusWatching.acknowledgeDone()`이 호출되어 그 시점 이전의 `done`은 전부 "확인함" 처리되고, 그 이후에 새로 `done`이 찍히면 다시 나타납니다 — Stop 이벤트 하나가 무한히 헤롱헤롱을 유지하지 않도록 하는 장치입니다.
 
@@ -355,10 +341,10 @@ scripts/install_claude_hooks.py  위 훅 설정을 ~/.claude/settings.json에 �
                                    설치 스크립트 (`--uninstall`로 원상복구). 기존 훅은 건드리지
                                    않고, 재실행해도 중복 추가되지 않음
 
-scripts/claude_hook_status.py  Claude Code 훅 핸들러 (선택 설치, 위 스크립트가 참조). ~/.claude/
-                                 settings.json에 등록해두면 훅이 발생할 때마다 이 스크립트가
-                                 실행되어 ~/.claude/connor-pet-status.json을 갱신합니다 (위
-                                 "Claude Code 훅으로 얼음/헤롱헤롱까지 보기" 참고)
+scripts/pet_hook_status.py  Claude Code 훅 핸들러 (선택 설치, 위 스크립트가 참조). ~/.claude/
+                                 settings.json에 등록해두면 Stop/SessionEnd 훅이 발생할 때 이
+                                 스크립트가 실행되어 ~/.claude/pet-status.json을 갱신합니다 (위
+                                 "Claude Code 훅으로 헤롱헤롱/실패까지 보기" 참고)
 
 preview/index.html        브라우저 전용 미리보기: 실제 spritesheet.png + pet.json을 그대로
                             불러와서 Orca의 실제 CSS 스텝핑 알고리즘(buildSpriteAnimationCss)으로
@@ -368,7 +354,8 @@ ConnorPet/                 진짜 결과물: 독립 실행형 macOS 앱
   Package.swift              (Swift Package, `swift run`만 있으면 됨 — Xcode 불필요)
   Sources/ConnorPet/
     OrcaStatusWatcher.swift    last-status.json 폴링(1s) + 전체 상태 집계 (Orca 소스)
-    ClaudeCodeStatusWatcher.swift  ~/.claude/sessions/*.json + (있다면) 훅이 쓴 connor-pet-status.json을
+    ClaudeCodeStatusWatcher.swift  ~/.claude/sessions/*.json(권위 소스: 달리기/얼음/잠듦) +
+                                    (있다면) 훅이 쓴 pet-status.json(오버레이: 헤롱헤롱/실패)을
                                     250ms마다 폴링해 병합 (Claude Code 소스, 기본값)
     PetAnimationState.swift    포팅한 우선순위 로직 + 드래그 방향 판정 + AgentStatusWatching 프로토콜
                                 (acknowledgeDone()으로 헤롱헤롱 호버-해제 처리) + 토큰/진화용 필드
@@ -590,12 +577,11 @@ python3 scripts/simulate_agent.py clear-all                # "idle"로 복귀
 
 `connor-pet-test:` 접두어가 붙은 키로만 기록해서, 실제 Orca 패널(UUID 형태)과 절대 충돌하지 않습니다. `clear-all`도 이 접두어가 붙은 항목만 지웁니다.
 
-**Claude Code 소스**는 시뮬레이터가 없습니다 — 다른 터미널에서 `claude`를 실행해서 실제 세션을 하나 띄우고 프롬프트를 보내보면(`~/.claude/sessions/<pid>.json`의 `status`가 `busy`로 바뀌는 동안) 펫이 바로 반응하는 걸 볼 수 있습니다. 위 훅까지 설정했다면 stdin으로 가짜 페이로드를 직접 넣어서 얼음/헤롱헤롱도 트리거해볼 수 있습니다:
+**Claude Code 소스**는 시뮬레이터가 없습니다 — 다른 터미널에서 `claude`를 실행해서 실제 세션을 하나 띄우고 프롬프트를 보내보면(`~/.claude/sessions/<pid>.json`의 `status`가 `busy`→달리기, 권한 승인창이 뜨면 `waiting`→얼음으로 바뀌는 동안) 펫이 바로 반응하는 걸 볼 수 있습니다. 위 훅까지 설정했다면 stdin으로 가짜 페이로드를 직접 넣어서 헤롱헤롱/실패도 트리거해볼 수 있습니다(단, 세션 파일이 그 세션을 `idle`로 두고 있어야 오버레이가 보입니다):
 
 ```sh
-echo '{"session_id":"<아무-id>","cwd":"/tmp"}' | python3 scripts/claude_hook_status.py blocked  # "waiting"으로
-echo '{"session_id":"<아무-id>","cwd":"/tmp"}' | python3 scripts/claude_hook_status.py done      # "review"로
-rm ~/.claude/connor-pet-status.json                                                              # 원상복구
+echo '{"session_id":"<아무-id>","cwd":"/tmp"}' | python3 scripts/pet_hook_status.py done   # "review"(헤롱헤롱)로
+rm ~/.claude/pet-status.json                                                                # 원상복구
 ```
 
 **한 가지 알아둘 점**: Orca가 실제로 돌고 있고 실제 에이전트 활동이 생기면, Orca 자신이 다음 상태를 저장할 때 파일 전체를 자기 메모리 상태로 덮어써서 주입해둔 테스트 항목이 사라질 수 있습니다(실제로 테스트하다가 이렇게 됐습니다). 그럴 땐 그냥 `set` 명령을 다시 실행하면 됩니다 — 실제 데이터를 건드리는 게 아니라서 안전합니다.
