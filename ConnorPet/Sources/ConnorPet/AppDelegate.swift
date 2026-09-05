@@ -351,7 +351,10 @@ selectedStatusSource = Self.savedStatusSource(fallback: Self.availableStatusSour
             case .declined:
                 self?.showInfo(title: "대전 거절됨", text: "\(peer.name)님이 대전을 거절했어요.")
             case .failed:
-                self?.showInfo(title: "응답 없음", text: "\(peer.name)님이 대전 신청에 응답하지 않았어요.")
+                // 무응답(20초 카운트다운 막대가 다 지남)이나 연결 실패는 조용히 끝낸다.
+                // 막대 자체가 이미 진행 상황을 보여줬으므로, 업무 중에 가운데 모달을
+                // 또 띄우지 않는다("업무 방해 없이" 원칙). 막대만 사라진다.
+                break
             }
         }
     }
