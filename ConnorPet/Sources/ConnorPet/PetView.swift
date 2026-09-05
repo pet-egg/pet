@@ -70,6 +70,9 @@ final class PetView: NSView {
     /// Fires once each time the pointer enters the pet — the "you noticed it"
     /// gesture AppDelegate uses to dismiss a lingering review/헤롱헤롱 state.
     var onHoverEnter: (() -> Void)?
+    /// 우클릭 메뉴의 "설정…"을 눌렀을 때. 설정 창을 여는 건 AppDelegate 몫이다 —
+    /// 메뉴바 아이콘이 가려 접근 못 하는 사용자를 위한 두 번째 진입점이다.
+    var onOpenSettings: (() -> Void)?
     /// 호버가 켜지고 꺼질 때. 경험치 상세 창을 여닫는 데 쓴다 — 그 문구는 펫 창보다
     /// 길어서 별도 창(XPDetailWindow)에 그린다.
     var onHoverChanged: ((Bool) -> Void)?
@@ -260,12 +263,20 @@ final class PetView: NSView {
             menu.addItem(item)
         }
 
+        // 설정과 종료를 맨 아래 한 묶음으로. 메뉴바 아이콘이 가려 접근 못 하는
+        // 사용자를 위해, 메뉴바에 있던 기능을 모은 설정 창을 여기서도 연다.
+        menu.addItem(.separator())
+        let settings = NSMenuItem(title: "설정…", action: #selector(openSettings(_:)), keyEquivalent: ",")
+        settings.keyEquivalentModifierMask = [.command]
+        settings.target = self
+        settings.isEnabled = true
+        menu.addItem(settings)
+
         // 종료. 지금까지는 메뉴바 아이콘에서만 끌 수 있었는데, 펫이 눈앞에 있는데
         // 메뉴바까지 올라가야 하는 게 번거롭다.
         //
         // 단축키는 일부러 안 붙였다. 메뉴가 열린 상태에서 글자 키가 그대로 먹으므로
         // (a·s 가 그렇게 동작한다) 종료에까지 달면 오타 한 번에 앱이 꺼진다.
-        menu.addItem(.separator())
         let quit = NSMenuItem(title: "나가", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
         quit.target = NSApp
         quit.isEnabled = true
@@ -282,6 +293,10 @@ final class PetView: NSView {
         if let text = onClick?(), !text.isEmpty {
             speakWaking(text)
         }
+    }
+
+    @objc private func openSettings(_ sender: NSMenuItem) {
+        onOpenSettings?()
     }
 
     @objc private func useSkill(_ sender: NSMenuItem) {
