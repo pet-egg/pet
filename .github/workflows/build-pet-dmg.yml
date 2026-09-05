@@ -1,14 +1,14 @@
 name: Build Pet DMG
 
 # 메뉴바 펫 앱(ConnorPet/)을 `cd ConnorPet && swift run` 과 동일하게 **모든 펫을 포함한
-# 단일 앱**으로 빌드해 pet.app / pet.dmg 를 만드는 수동 파이프라인. 예전에는 펫 하나를
-# 골라 그 펫만 남기게 소스를 패치했지만, 지금은 메뉴바에서 12종을 모두 전환할 수 있는
-# 기본 빌드를 그대로 배포한다. 산출물 이름은 전부 `pet` 로 고정한다.
+# 단일 앱**으로 빌드해 pet.app / pet.dmg 를 만드는 파이프라인. v* 태그 푸시로만 트리거되며
+# 빌드 후 릴리스 생성 + Pages 배포까지 자동으로 이어진다. 예전에는 펫 하나를 골라 그 펫만
+# 남기게 소스를 패치했지만, 지금은 메뉴바에서 12종을 모두 전환할 수 있는 기본 빌드를 그대로
+# 배포한다. 산출물 이름은 전부 `pet` 로 고정한다.
 on:
   push:
     tags:
       - 'v*'            # 예: git push origin v1.0.0 → 빌드 + 릴리스 + Pages 배포 자동
-  workflow_dispatch: {} # 수동 실행은 아티팩트(pet.dmg/appcast.xml)만 만든다(릴리스/Pages 안 함)
 
 permissions:
   contents: read
@@ -191,8 +191,8 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # ── 아래 두 잡은 태그 푸시(refs/tags/v*)일 때만 실행된다. 수동(workflow_dispatch)
-  #    실행은 github.ref 가 브랜치라 건너뛰고 위 빌드 아티팩트만 남는다. ──
+  # ── 아래 두 잡은 태그 푸시(refs/tags/v*)일 때만 실행된다. 트리거가 v* 태그뿐이라
+  #    사실상 항상 도는 잡이지만, 안전장치로 ref 조건을 그대로 둔다. ──
 
   # 릴리스 생성 + pet.dmg 업로드. "latest" 릴리스가 이 태그가 되므로
   # appcast 의 enclosure(releases/latest/download/pet.dmg)와 URL 이 일치한다.
