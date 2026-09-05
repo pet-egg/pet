@@ -7,8 +7,6 @@ import Foundation
 struct ClaudeDesktopInput: Equatable {
     /// The Claude.app process is running at all.
     let running: Bool
-    /// Claude.app is the frontmost (Dock-selected) app right now.
-    let frontmost: Bool
     /// A response is actively streaming (a "Stop response" control is present in
     /// the accessibility tree).
     let generating: Bool
@@ -27,20 +25,19 @@ struct ClaudeDesktopInput: Equatable {
 /// 2. awaiting approval      → 얼음 (waiting)        — paused, needs your Allow/Deny
 /// 3. generating             → 달리기 (running)      — response streaming now
 /// 4. done, unacknowledged   → 헤롱헤롱 (review)      — "go look, it finished"
-/// 5. running, backgrounded  → 얼음 (waiting)        — left on ice, not looking
-/// 6. running, frontmost/idle→ 잠듬 (idle)           — you're here, nothing doing
+/// 5. otherwise              → 잠듬 (idle)           — nothing to act on
 ///
 /// `awaitingApproval` outranks `generating` on purpose: the "Stop response"
 /// button (our generating signal) stays visible while a turn is paused on an
 /// approval card, so both read true at once — the approval is what the user has
-/// to act on, so it wins. It also outranks `donePending` and the backgrounded
-/// 얼음, and must win even when Claude is frontmost.
+/// to act on, so it wins. 얼음 here is reserved for that *actionable* wait —
+/// merely leaving Claude in the background is not 얼음 (it reads as idle), so the
+/// desktop source matches Claude Code/Orca where 얼음 means "waiting on *you*".
 func claudeDesktopAnimation(_ input: ClaudeDesktopInput) -> PetAnimationName {
     guard input.running else { return .idle }
     if input.awaitingApproval { return .waiting }
     if input.generating { return .running }
     if input.donePending { return .review }
-    if !input.frontmost { return .waiting }
     return .idle
 }
 
@@ -58,12 +55,15 @@ func claudeDesktopAnimation(_ input: ClaudeDesktopInput) -> PetAnimationName {
 /// - Signal 1 — "is it generating": presence of a stop-response control in the
 ///   AX tree. Its *falling edge* (control disappeared) doubles as our most
 ///   reliable "a turn just finished" signal → 헤롱헤롱. Needs the Accessibility
-///   permission; without it we degrade to running/frontmost + notification only.
+///   permission; without it we degrade to running + notification-only.
 /// - Signal 2 — "did it finish": a new Claude notification in macOS's
 ///   Notification Center DB (`NotificationCenterDB`), which needs Full Disk
 ///   Access. The desktop app only posts these for longer/agentic work, so this is
 ///   a *confirming* done signal layered on top of the AX falling edge — either
 ///   one raises 헤롱헤롱.
+/// - Signal 3 — "is it waiting on you": an approval card in the AX tree (an Allow
+///   *and* a Deny button) → 얼음. This is the only actionable-wait signal the
+///   desktop exposes; simply backgrounding Claude is *not* 얼음.
 ///
 /// "Done" (from either signal) latches until the user acknowledges it by
 /// hovering the pet (`acknowledgeDone()`), or a safety timeout elapses, or a new
@@ -156,7 +156,6 @@ final class ClaudeDesktopStatusWatcher: AgentStatusWatching {
         let now = Date()
 
         let running = Self.isClaudeRunning()
-        let frontmost = Self.isClaudeFrontmost()
 
         refreshNotificationsIfNeeded(now: now)
 
@@ -201,7 +200,6 @@ final class ClaudeDesktopStatusWatcher: AgentStatusWatching {
 
         let input = ClaudeDesktopInput(
             running: running,
-            frontmost: frontmost,
             generating: generating,
             awaitingApproval: awaitingApproval,
             donePending: donePending
@@ -261,8 +259,8 @@ final class ClaudeDesktopStatusWatcher: AgentStatusWatching {
         let debug = ProcessInfo.processInfo.environment["CONNORPET_DEBUG"] != nil
         if debug {
             let line = String(
-                format: "[connor-pet] claude-desktop: run=%@ front=%@ gen=%@ appr=%@ done=%@ ax=%@ -> %@\n",
-                d(input.running), d(input.frontmost), d(input.generating), d(input.awaitingApproval),
+                format: "[connor-pet] claude-desktop: run=%@ gen=%@ appr=%@ done=%@ ax=%@ -> %@\n",
+                d(input.running), d(input.generating), d(input.awaitingApproval),
                 d(input.donePending), probe.lastReadable ? "Y" : "N", animation.rawValue
             )
             FileHandle.standardError.write(line.data(using: .utf8)!)
@@ -286,10 +284,6 @@ final class ClaudeDesktopStatusWatcher: AgentStatusWatching {
 
     private static func isClaudeRunning() -> Bool {
         NSWorkspace.shared.runningApplications.contains { $0.bundleIdentifier == bundleID }
-    }
-
-    private static func isClaudeFrontmost() -> Bool {
-        NSWorkspace.shared.frontmostApplication?.bundleIdentifier == bundleID
     }
 }
 
