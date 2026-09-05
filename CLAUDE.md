@@ -32,7 +32,7 @@ Orca 또는 Claude Code의 프로젝트/에이전트 상태에 반응하는 데�
 - `scripts/install_claude_hooks.py` — 위 훅 핸들러를 `~/.claude/settings.json`에 병합/제거(`--uninstall`)하는 설치 스크립트. 기존 훅(matcher 걸린 것 포함) 안 건드리고, 재실행해도 중복 안 됨
 - `scripts/pet_hook_status.py` — Claude Code 훅 핸들러 (선택 설치, README "Claude Code 훅으로 헤롱헤롱/실패까지 보기" 참고). Stop/SessionEnd에서만 돌며 `~/.claude/pet-status.json`에 done/failed/remove만 기록(달리기·얼음은 세션파일이 담당). `~/.claude/settings.json`은 전역 설정이라 **사용자 명시적 동의 없이 이 저장소가 대신 실행하지 않는다** — 스크립트/README/메뉴바 버튼으로 안내만 하고, 사용자가 직접 돌리거나(스크립트) 메뉴에서 명시적으로 눌러야(인앱) 실행. 이 파일의 사본이 `ConnorPet/Sources/ConnorPet/Resources/hooks/pet_hook_status.py`에도 있다(아래 동기화 규칙 참고)
 - `preview/index.html` — 브라우저 전용 미리보기 (Orca 설치 불필요)
-- `.github/workflows/build-pet-dmg.yml` — base pet 하나만 골라 `.app`/`.dmg`로 빌드하는 수동(`workflow_dispatch`) CI 파이프라인. `pet` 드롭다운 옵션이 `availablePetSlugs`와 동기화되어 있어야 함(아래 "작업 시 반드시 지킬 것" 참고)
+- `.github/workflows/build-pet-dmg.yml` — `swift run`과 동일하게 **전체 펫**이 든 단일 앱을 `pet.app`/`pet.dmg`(실행 파일명도 `pet`)로 빌드하는 CI 파이프라인. 펫을 고르거나 소스를 패치하지 않고 기본 빌드를 그대로 배포한다. Sparkle 임베드 + git 버전 주입 + (Secret 있으면) 서명된 `appcast.xml` 생성. **트리거 2종**: `v*` **태그 푸시** → 빌드 후 `release` 잡이 릴리스 생성 + `pet.dmg` 업로드(다운로드 URL `releases/latest/download/pet.dmg`), `publish-appcast` 잡이 `appcast.xml` 을 GitHub Pages(소스=GitHub Actions)로 배포 → 자동 업데이트 발행 완결. `workflow_dispatch` **수동 실행** → 아티팩트(`pet-dmg`/`pet-appcast`)만, 릴리스/Pages는 건너뜀(`if: startsWith(github.ref, 'refs/tags/v')`). 릴리스에는 `SPARKLE_EDDSA_PRIVATE_KEY` 시크릿 필수
 
 ## 빌드 / 실행 / 테스트
 
@@ -67,7 +67,7 @@ UI/동작을 변경했으면 반드시 `swift run`으로 실제 앱을 띄워서
   ```
   README와 실제 동작이 어긋나는 부분(예: 코드에서 바뀐 아이콘·플래그·경로가 README에 옛날 그대로 남아있는 경우)을 발견하면 관련 작업이 아니어도 그 자리에서 같이 고칠 것.
 - **훅 핸들러 두 벌 항상 일치**: `scripts/pet_hook_status.py`(저장소/스크립트 설치용)와 `ConnorPet/Sources/ConnorPet/Resources/hooks/pet_hook_status.py`(앱 번들에 넣어 메뉴바 버튼이 `~/.claude/pet/`로 복사하는 사본)는 **바이트 단위로 동일**해야 한다. 한쪽을 고치면 반드시 다른 쪽에 복사할 것(`cp scripts/pet_hook_status.py ConnorPet/Sources/ConnorPet/Resources/hooks/pet_hook_status.py`). 어긋나면 스크립트로 설치한 사용자와 앱으로 설치한 사용자의 동작이 달라진다. 변경했다면 `CONNORPET_SELFTEST=hooks swift run`으로 설치기 회귀도 함께 확인.
-- **새 포켓몬(펫) 추가 시 GitHub Actions 목록도 같이 갱신**: `AppDelegate.swift`의 `availablePetSlugs`에 슬러그를 추가하면(`scripts/build_sheet.py`의 `PETS`도 함께), `.github/workflows/build-pet-dmg.yml`의 `workflow_dispatch.inputs.pet.options`에도 같은 펫을 `"<한글 이름> (<영문 slug 대문자화>)"` 형식(각 펫 `pet.json`의 `displayName`과 동일한 표기)으로 추가할 것. 둘이 어긋나면 Actions에서 그 펫을 선택할 방법이 없어진다 — 실제로 토게피 추가 때 이 목록을 빠뜨렸던 적이 있음.
+- **새 포켓몬(펫) 추가**: `AppDelegate.swift`의 `availablePetSlugs`에 슬러그를 추가하고 `scripts/build_sheet.py`의 `PETS`도 함께 갱신할 것. (CI(`build-pet-dmg.yml`)는 이제 펫을 고르지 않고 전체 빌드를 그대로 배포하므로, 예전처럼 워크플로의 펫 드롭다운 목록을 맞춰 줄 필요는 없다 — 그 입력은 삭제됨.)
 - **브랜치 전략: GitHub Flow**: `main`은 항상 배포 가능한 상태로 유지하고, 모든 작업은 `main`에서 분기한 **기능 브랜치**에서 한다. 브랜치 이름은 `feature/<간단한-설명>`(kebab-case) 형식으로 짓는다 (예: `feature/lan-multiplayer-battle`). 작업이 끝나면 그 기능 브랜치를 push하고 `main`으로 향하는 PR을 열어 리뷰 후 병합한다. `main`에 직접 push하지 않는다.
 - **커밋 메시지는 항상 한글로 작성**: 제목/본문 모두 한글로 쓸 것 (`Co-Authored-By:` 트레일러 등 고정 형식 줄은 예외).
 - **`main` 브랜치는 보호 룰셋이 없음**: 룰셋상으로는 write 권한이 있는 협업자가 PR/승인 없이 `main`에 직접 push할 수 있고 force-push/브랜치 삭제도 막혀있지 않지만, **위 브랜치 전략(GitHub Flow)에 따라 직접 push하지 말고 기능 브랜치 + PR로 진행할 것**. 협업자 현황 확인 명령: `gh api repos/pet-egg/pet/collaborators --jq '.[] | {login, permissions}'`. 룰셋 현황 확인 명령: `gh api repos/pet-egg/pet/rulesets`.

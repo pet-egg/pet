@@ -444,21 +444,21 @@ swift run
 
 ## dmg로 빌드해서 배포하기 (GitHub Actions)
 
-`swift run`으로 직접 띄우는 대신, 펫 하나만 골라서 더블클릭으로 설치되는 `.dmg`가 필요하면 `build-pet-dmg.yml` 워크플로우를 씁니다:
+`swift run`으로 직접 띄우는 대신 더블클릭으로 설치되는 `.dmg`가 필요하면 `build-pet-dmg.yml` 워크플로우를 씁니다. **`cd ConnorPet && swift run`과 똑같이 12종 펫이 모두 든 단일 앱**(메뉴바에서 전환)을 빌드하며, 산출물 이름은 전부 `pet`으로 고정됩니다:
 
 1. GitHub 저장소의 **Actions** 탭 → **Build Pet DMG** 워크플로우 선택
-2. **Run workflow** 클릭 → `pet` 드롭다운에서 원하는 base pet(리아코/메타몽/파이리/꼬부기/꼬마돌/이브이/치코리타/아차모/토게피/뚜꾸리/잠만보/팬텀 중 하나, "한글 이름 (영문)" 표기) 선택 → 실행
-3. macOS 러너가 `AppDelegate.swift`의 `availablePetSlugs`를 (커밋하지 않고, 빌드 시점에만) 고른 펫 하나로 임시 치환한 뒤 `swift build -c release`로 빌드하고, `<Pet>-pet.app`으로 번들링해서 `<Pet>-pet.dmg`를 만듭니다. 진화형 스프라이트는 리소스 번들(`Resources/pets`) 전체가 항상 함께 들어가므로 별도 처리 없이도 진화가 정상 동작합니다. 앱 아이콘은 고른 펫의 스프라이트시트에서 원색 그대로인 "running" 프레임을 잘라 `.icns`로 구워 넣습니다(idle 프레임은 이 저장소의 리스킨 규칙상 "잠듦" 상태로 탈색되어 있어서 제외).
-4. 실행이 끝나면 해당 워크플로우 실행 화면의 **Artifacts**에서 `<Pet>-pet-dmg`를 다운로드
+2. **Run workflow** 클릭 → 실행 (고를 옵션 없음 — 항상 전체 펫 빌드)
+3. macOS 러너가 `swift build -c release`로 기본 빌드(전체 펫)를 만들고, `pet.app`(실행 파일명도 `pet`)으로 번들링해서 `pet.dmg`를 만듭니다. 진화형 스프라이트도 리소스 번들(`Resources/pets`) 전체가 함께 들어가 정상 동작하고, 앱 아이콘은 `assets/app-icon.png` 하나로 고정입니다.
+4. 실행이 끝나면 **Artifacts**에서 `pet-dmg`(그리고 서명 시크릿이 있으면 `pet-appcast`)를 다운로드
 
 코드서명/공증(notarization)은 하지 않고 ad-hoc 서명만 합니다(`codesign --sign -`). 서명 없이 그대로 두면 손으로 조립한 `.app` 번들이 quarantine 플래그와 맞물려 macOS가 "손상되었기 때문에 열 수 없음"이라며 실행을 거부하는 문제가 있어서, 최소한의 ad-hoc 서명으로 이를 막았습니다.
 
 **다운로드 후 반드시 quarantine을 직접 벗겨줘야 열립니다.** Apple Developer ID 서명이 아니라서 "확인되지 않은 개발자" 경고 정도로 끝나지 않고, 다운로드한 파일(quarantine 플래그가 붙음)을 그대로 더블클릭하면 macOS(특히 Apple Silicon)의 `amfid`가 "adhoc signed or signed by an unknown certificate chain"이라며 실행 자체를 막고 **아무 대화상자도 띄우지 않은 채 앱을 곧장 휴지통으로 옮겨버립니다** — 우클릭 → 열기로도 우회되지 않습니다(실제로 재현해서 확인한 동작입니다). 아래처럼 터미널에서 quarantine을 지운 뒤 열어야 합니다:
 
 ```sh
-# dmg를 마운트해서 <Pet>-pet.app을 Applications(또는 원하는 위치)로 옮긴 다음:
-xattr -d com.apple.quarantine /Applications/<Pet>-pet.app
-open /Applications/<Pet>-pet.app
+# dmg를 마운트해서 pet.app을 Applications(또는 원하는 위치)로 옮긴 다음:
+xattr -d com.apple.quarantine /Applications/pet.app
+open /Applications/pet.app
 ```
 
 크기는 Orca 자체 기본값(`PET_SIZE_DEFAULT=180`)보다 작게, `90pt`로 맞춰뒀습니다 (`AppDelegate.swift`의 `petSize`). 더 키우거나 줄이고 싶으면 이 값만 바꾸면 됩니다.
@@ -477,13 +477,28 @@ open /Applications/<Pet>-pet.app
 
 ### 배포 담당자용 설정 (업데이트를 실제로 켜려면)
 
-앱에는 이미 검증용 **공개키**(`SUPublicEDKey`)와 피드 주소(`SUFeedURL`, GitHub Pages)가 박혀 있습니다. 실제로 업데이트를 발행하려면 한 번만 아래를 준비하면 됩니다:
+앱에는 이미 검증용 **공개키**(`SUPublicEDKey`)와 피드 주소(`SUFeedURL` = `https://pet-egg.github.io/pet/appcast.xml`)가 박혀 있습니다. **한 번만** 아래 두 가지를 준비하면, 그 뒤로는 **`git tag` 푸시 하나로 빌드·릴리스·Pages 배포가 전부 자동**입니다.
 
-1. **개인키 발급** — 이 저장소의 공개키와 짝이 되는 개인키는 최초 `generate_keys` 실행 때 만든 사람의 **로그인 키체인**에 있습니다. CI 로 서명하려면 그 개인키를 export 해서(`generate_keys -x private.key`) 저장소 Secret **`SPARKLE_EDDSA_PRIVATE_KEY`** 에 넣습니다. (키를 새로 만들려면 `generate_keys` 로 만들고, 출력된 새 `SUPublicEDKey` 를 `scripts/make_app.sh` 와 `build-pet-dmg.yml` 의 값으로 교체.)
-2. **GitHub Pages 켜기** — `SUFeedURL` 이 가리키는 곳(`https://pet-egg.github.io/pet/appcast-<slug>.xml`)에 appcast 를 서빙하도록 Pages 를 활성화합니다.
-3. **발행** — `Build Pet DMG` 워크플로가 DMG 를 만들고, Secret 이 있으면 `sign_update`+`generate_appcast` 로 서명된 `appcast-<slug>.xml` 을 아티팩트로 함께 냅니다. 그 **DMG 를 릴리스에 업로드**(다운로드 URL 이 `releases/latest/download/<이름>.dmg` 가 되도록)하고 **appcast 를 Pages 에 올리면** 기존 사용자 앱이 다음 실행 때 새 버전을 감지합니다.
+**최초 1회 준비**
 
-Secret 이 없으면 서명 스텝은 조용히 건너뛰고 예전처럼 DMG 만 나옵니다(앱은 업데이트를 못 찾을 뿐 정상 동작).
+1. **개인키를 Secret 에 등록** — 공개키와 짝이 되는 개인키는 최초 `generate_keys` 실행 때 만든 사람의 **로그인 키체인**에 있습니다. export 해서(`generate_keys -x private.key`) 저장소 Secret **`SPARKLE_EDDSA_PRIVATE_KEY`** 에 넣습니다. (키를 새로 만들려면 `generate_keys` 로 만들고, 출력된 새 `SUPublicEDKey` 를 `scripts/make_app.sh` 와 `build-pet-dmg.yml` 의 값으로 교체.)
+2. **Pages 소스를 "GitHub Actions" 로** — 저장소 **Settings › Pages › Build and deployment › Source** 를 **GitHub Actions** 로 설정합니다. (워크플로의 `publish-appcast` 잡이 `appcast.xml` 을 여기로 배포합니다.)
+
+**릴리스 발행 (버전 낼 때마다)**
+
+```sh
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+태그(`v*`)를 푸시하면 `Build Pet DMG` 워크플로가 자동으로:
+- `pet.dmg` + 서명된 `appcast.xml` 빌드 (`git describe` 로 버전 주입)
+- **릴리스 생성 + `pet.dmg` 업로드** → 다운로드 URL `https://github.com/pet-egg/pet/releases/latest/download/pet.dmg` (appcast 의 enclosure 와 일치)
+- 서명된 **`appcast.xml` 을 Pages 로 배포**
+
+→ 기존 사용자 앱이 다음 실행 때 새 버전을 감지합니다. (수동 `workflow_dispatch` 실행은 릴리스/Pages 없이 아티팩트만 만듭니다.)
+
+> 릴리스에는 서명 키가 필수입니다 — Secret 이 없으면 `appcast.xml` 이 생성되지 않아 `publish-appcast` 잡이 실패합니다(빌드/릴리스 자체는 되지만 자동 업데이트 피드는 안 올라감).
 
 ## 클릭하면 브리핑
 
