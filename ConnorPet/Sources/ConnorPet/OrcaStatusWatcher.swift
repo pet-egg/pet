@@ -3,8 +3,8 @@ import Foundation
 /// Parses the subset of Orca's persisted `last-status.json` entry shape that
 /// we need, using loose JSONSerialization dictionaries rather than a strict
 /// Codable struct. Also reused by `ClaudeCodeStatusWatcher` for
-/// `~/.claude/connor-pet-status.json`, which our own hooks write in this same
-/// shape (see `scripts/claude_hook_status.py`).
+/// `~/.claude/pet-status.json`, which our own hooks write in this same
+/// shape (see `scripts/pet_hook_status.py`).
 ///
 /// Why: real on-disk entries are NOT uniform. An entry that came from a
 /// "SubagentStop" hook event (observed live) nests `state`/`prompt`/`agentType`

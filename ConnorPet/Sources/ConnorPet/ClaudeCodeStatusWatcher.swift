@@ -6,29 +6,31 @@ import Foundation
 /// `OrcaStatusWatcher`'s shape so the menu-bar source picker can swap between
 /// the two transparently.
 ///
-/// Two sources are merged every poll:
+/// Two sources are merged every poll, but with a strict hierarchy — the
+/// session file is authoritative, the hook file is only an overlay:
 ///
 /// 1. `~/.claude/sessions/<pid>.json` — one file per running CLI process
 ///    (the same files backing `claude agents`/`claude agents --json`).
-///    Confirmed live fields (v2.1.197): `status` ("busy" while a turn is in
-///    flight, "idle" once control returns to the user), `sessionId`, `cwd`,
-///    `name`. This alone only distinguishes busy/idle — there's no reliable
-///    on-disk signal here for "blocked on a permission prompt" or "done,
-///    awaiting review" (a richer `tempo`/`waitingFor` field exists in the
-///    schema but was never observed populated in practice).
+///    Confirmed live fields (v2.1.197): `sessionId`, `cwd`, `name`, and a
+///    `status` that Claude Code keeps *level-triggered* — always the current
+///    truth: "busy" while a turn is in flight, "waiting" (with `waitingFor`,
+///    e.g. "permission prompt") while blocked on the user, "idle" between
+///    turns. This alone covers working/blocked/idle, so it — not the hooks —
+///    is the source of truth for those three. Because it's PID-keyed and we
+///    gate on `kill(pid, 0)`, a dead session can never linger as a ghost.
 ///
-/// 2. `~/.claude/connor-pet-status.json` — written by our own Claude Code
-///    hooks (`scripts/claude_hook_status.py`, wired into `Notification`/
-///    `Stop`/`UserPromptSubmit`/`PreToolUse`/`SessionEnd` in the user's
-///    `~/.claude/settings.json` — see README "Claude Code 훅으로 얼음/헤롱헤롱까지
-///    보기"). This is the *only* source of the richer blocked/done states;
-///    it's optional — if the user hasn't installed the hooks, this file
-///    simply doesn't exist and we fall back to busy/idle from (1) alone.
-///    Shaped exactly like Orca's last-status.json, so it reuses
-///    `parseAgentStatusEntries` unchanged.
+/// 2. `~/.claude/pet-status.json` — written by our own Claude Code hooks
+///    (`scripts/pet_hook_status.py`, wired into `Stop`/`SessionEnd` in the
+///    user's `~/.claude/settings.json` — see README "Claude Code 훅으로
+///    헤롱헤롱/실패까지 보기"). Optional, and now used *only* for the two states
+///    the session file cannot express: "done" (턴 종료, 리뷰 대기 → 하트) and
+///    "failed" (마지막 툴이 에러 → 실패). Shaped like Orca's last-status.json,
+///    so it reuses `parseAgentStatusEntries` unchanged.
 ///
-/// Where both sources have an entry for the same session, the hook-authored
-/// one wins (it's strictly more precise).
+/// Merge rule (see `poll()`): the session file decides working/blocked/idle;
+/// the hook file may only *upgrade* an otherwise-idle session to done/failed.
+/// A stale hook entry can therefore never mask a live session — that hook-wins
+/// inversion was the old "frozen on 얼음 mid-session" bug.
 final class ClaudeCodeStatusWatcher: AgentStatusWatching {
     private let sessionsDir: URL
     private let hookStatusFileURL: URL
@@ -48,7 +50,7 @@ final class ClaudeCodeStatusWatcher: AgentStatusWatching {
     init(pollInterval: TimeInterval = 0.25) {
         let home = FileManager.default.homeDirectoryForCurrentUser
         self.sessionsDir = home.appendingPathComponent(".claude/sessions")
-        self.hookStatusFileURL = home.appendingPathComponent(".claude/connor-pet-status.json")
+        self.hookStatusFileURL = home.appendingPathComponent(".claude/pet-status.json")
         self.projectsDir = home.appendingPathComponent(".claude/projects")
         self.pollInterval = pollInterval
     }
@@ -86,7 +88,7 @@ final class ClaudeCodeStatusWatcher: AgentStatusWatching {
             fingerprint[file.lastPathComponent] = mtime ?? .distantPast
         }
         let hookAttrs = try? FileManager.default.attributesOfItem(atPath: hookStatusFileURL.path)
-        fingerprint["connor-pet-status.json"] = (hookAttrs?[.modificationDate] as? Date) ?? .distantPast
+        fingerprint["pet-status.json"] = (hookAttrs?[.modificationDate] as? Date) ?? .distantPast
         // Also fold in the transcripts we already resolved on prior polls, so a
         // token count that grows mid-turn refreshes the XP bar even in the rare
         // window where the session file itself didn't change.
@@ -117,33 +119,35 @@ final class ClaudeCodeStatusWatcher: AgentStatusWatching {
             guard session.alive else { continue }
             let label = "claude-code:\(session.name ?? sessionId)"
             let transcriptPath = transcriptPath(forSessionId: sessionId)
-            if let hookEntry = hookEntriesById[sessionId] {
-                entries.append(AgentStatusEntry(
-                    paneKey: label,
-                    state: hookEntry.state,
-                    workingMode: nil,
-                    worktreeId: hookEntry.worktreeId ?? session.cwd,
-                    updatedAt: hookEntry.updatedAt,
-                    transcriptPath: transcriptPath
-                ))
-            } else {
-                entries.append(AgentStatusEntry(
-                    paneKey: label,
-                    state: session.busyIdleState,
-                    workingMode: nil,
-                    worktreeId: session.cwd,
-                    updatedAt: session.updatedAt,
-                    transcriptPath: transcriptPath
-                ))
+
+            // The session file is authoritative for working/blocked/idle (it's
+            // live and level-triggered). The hook file may only *upgrade* an
+            // otherwise-idle session to the two states it alone knows about —
+            // done (리뷰 대기) and failed — using the hook's own timestamp so
+            // decayStaleStates ages them from when the hook fired. It can never
+            // force blocked/working, so a stale hook can't freeze a live pet.
+            var state = session.busyIdleState
+            var updatedAt = session.updatedAt
+            if session.busyIdleState == "idle",
+               let hookEntry = hookEntriesById[sessionId],
+               hookEntry.state == "done" || hookEntry.state == "failed" {
+                state = hookEntry.state
+                updatedAt = hookEntry.updatedAt
             }
+
+            entries.append(AgentStatusEntry(
+                paneKey: label,
+                state: state,
+                workingMode: nil,
+                worktreeId: session.cwd,
+                updatedAt: updatedAt,
+                transcriptPath: transcriptPath
+            ))
         }
-        // Hook entries for sessions whose file we couldn't cross-reference
-        // (e.g. already cleaned up) — include as-is rather than drop, since
-        // agentStateAnimation's staleness gate already protects against these
-        // lingering forever if a SessionEnd hook never fires (crash, etc.).
-        for (sessionId, hookEntry) in hookEntriesById where sessionsById[sessionId] == nil {
-            entries.append(hookEntry)
-        }
+        // Hook entries for sessions with no live session file are deliberately
+        // dropped: a hook state we can't tie to a running process is unreliable
+        // (SessionEnd→remove doesn't fire on crash/kill), and appending stale
+        // "blocked" ones as-is was exactly the old frozen-ice bug.
 
         publish(entries: entries)
     }
@@ -190,15 +194,18 @@ final class ClaudeCodeStatusWatcher: AgentStatusWatching {
         // linger after the CLI quits without cleaning up.
         let alive = kill(pid_t(pid), 0) == 0
 
+        // Claude Code's own live status (v2.1.197): "busy" during a turn,
+        // "waiting" while blocked on the user (with `waitingFor`, e.g.
+        // "permission prompt"), "idle" between turns. Maps straight onto the
+        // same working/blocked/idle vocabulary Orca uses. `waitingFor` isn't
+        // needed for the mapping — any "waiting" is an actionable 얼음 — but a
+        // richer state could key off it later.
         let status = root["status"] as? String
-        let tempo = root["tempo"] as? String
         let busyIdleState: String
-        if tempo == "blocked" {
-            busyIdleState = "blocked"
-        } else if status == "busy" || tempo == "active" {
-            busyIdleState = "working"
-        } else {
-            busyIdleState = "idle"
+        switch status {
+        case "busy":    busyIdleState = "working"
+        case "waiting": busyIdleState = "blocked"
+        default:        busyIdleState = "idle"
         }
 
         let updatedAt = (root["statusUpdatedAt"] as? NSNumber)?.doubleValue

@@ -1,22 +1,24 @@
 #!/usr/bin/env python3
 """
 Claude Code hook handler for connor-pet. Wired into ~/.claude/settings.json
-(see README.md "Claude Code 훅으로 얼음/헤롱헤롱까지 보기") on UserPromptSubmit/
-PreToolUse/Notification/Stop/SessionEnd. Each invocation reads the hook's JSON
-payload from stdin, extracts session_id/cwd, and does an atomic read-modify-
-write of ~/.claude/connor-pet-status.json — a file shaped exactly like Orca's
-last-status.json (see ClaudeCodeStatusWatcher.swift, which polls it) so the
-same entries/state parsing works for both sources:
+(see README.md "Claude Code 훅으로 헤롱헤롱/실패까지 보기") on Stop/SessionEnd only.
+Each invocation reads the hook's JSON payload from stdin, extracts
+session_id/cwd, and does an atomic read-modify-write of
+~/.claude/pet-status.json — a file shaped exactly like Orca's last-status.json
+(see ClaudeCodeStatusWatcher.swift, which polls it):
 
   {"version": 2, "entries": {"<session_id>": {"state": ..., "worktreeId": ...,
   "receivedAt": ...}}}
 
-Usage: python3 claude_hook_status.py <working|blocked|done|remove>
-(state comes from argv[1]; session_id/cwd come from the hook's stdin JSON)
+Usage: python3 pet_hook_status.py <done|remove>
+(action comes from argv[1]; session_id/cwd come from the hook's stdin JSON)
 
-"working" and "done" are upgraded to "failed" when the most recent tool result
-in the session's transcript is an error — see last_tool_errored() for why that
-has to be read out of the transcript rather than taken from the hook payload.
+Working/blocked/idle now come straight from Claude Code's own
+~/.claude/sessions/<pid>.json (level-triggered, self-cleaning), so this hook
+only supplies the two states that file can't express: "done" (턴 종료, 리뷰
+대기) and "failed". "done" is upgraded to "failed" when the most recent tool
+result in the session's transcript is an error — see last_tool_errored() for
+why that has to be read out of the transcript rather than taken from the payload.
 """
 import fcntl
 import json
@@ -24,7 +26,7 @@ import os
 import sys
 import time
 
-STATUS_FILE = os.path.expanduser("~/.claude/connor-pet-status.json")
+STATUS_FILE = os.path.expanduser("~/.claude/pet-status.json")
 LOCK_FILE = STATUS_FILE + ".lock"
 
 # How much of the transcript's tail to inspect for a failed tool. Transcripts
@@ -74,8 +76,8 @@ def last_tool_errored(transcript_path):
 
 
 def main():
-    if len(sys.argv) != 2 or sys.argv[1] not in ("working", "blocked", "done", "remove"):
-        print("usage: claude_hook_status.py <working|blocked|done|remove>", file=sys.stderr)
+    if len(sys.argv) != 2 or sys.argv[1] not in ("done", "remove"):
+        print("usage: pet_hook_status.py <done|remove>", file=sys.stderr)
         return 1
 
     action = sys.argv[1]
@@ -108,10 +110,8 @@ def main():
 
             if action == "remove":
                 doc["entries"].pop(session_id, None)
-            else:
-                state = action
-                if action in ("working", "done") and last_tool_errored(payload.get("transcript_path")):
-                    state = "failed"
+            else:  # "done" — upgraded to "failed" if the turn's last tool errored
+                state = "failed" if last_tool_errored(payload.get("transcript_path")) else "done"
                 doc["entries"][session_id] = {
                     "state": state,
                     "worktreeId": cwd,

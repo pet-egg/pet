@@ -5,23 +5,20 @@ import Foundation
 /// `scripts/install_claude_hooks.py`. This exists because a DMG-installed
 /// `ConnorPet.app` has no repo checkout to run that script from: the menu action
 /// (see AppDelegate `toggleClaudeHooks`) copies the bundled hook handler to a
-/// stable path and wires the same six hook events that the script does.
+/// stable path and wires the same hook events that the script does.
 ///
-/// Without these hooks the Claude Code source only distinguishes busy/idle; the
-/// hooks are the *only* signal for 얼음(blocked)/헤롱헤롱(done) — see
-/// `ClaudeCodeStatusWatcher` and README "Claude Code 훅으로 얼음/헤롱헤롱까지 보기".
+/// Working/blocked/idle now come from Claude Code's own session files (see
+/// `ClaudeCodeStatusWatcher`), so the hooks are only needed for the two states
+/// those files can't express — 헤롱헤롱/리뷰 대기(done) and 실패(failed). See
+/// README "Claude Code 훅으로 헤롱헤롱/실패까지 보기".
 ///
 /// This touches a **global** file affecting every Claude Code session on the
 /// machine, so the menu action asks for explicit confirmation before calling in.
 enum ClaudeHookInstaller {
     /// The Claude Code hook events we register, each mapped to the state argument
-    /// passed to `claude_hook_status.py`. Kept in the same order and mapping as
+    /// passed to `pet_hook_status.py`. Kept in the same order and mapping as
     /// `scripts/install_claude_hooks.py`'s HOOK_EVENTS.
     private static let hookEvents: [(event: String, state: String)] = [
-        ("UserPromptSubmit", "working"),
-        ("PreToolUse", "working"),
-        ("PermissionRequest", "blocked"),
-        ("Notification", "blocked"),
         ("Stop", "done"),
         ("SessionEnd", "remove"),
     ]
@@ -61,7 +58,7 @@ enum ClaudeHookInstaller {
     /// path so the hook keeps working even if the .app is moved or updated
     /// (install re-copies it, so a newer app refreshes the script in place).
     private static var installedScriptURL: URL {
-        homeDir.appendingPathComponent(".claude/connor-pet/claude_hook_status.py")
+        homeDir.appendingPathComponent(".claude/pet/pet_hook_status.py")
     }
 
     /// The command string written into settings.json for a given state. The
@@ -70,24 +67,26 @@ enum ClaudeHookInstaller {
         "python3 \"\(installedScriptURL.path)\" \(state)"
     }
 
-    /// We recognize our own hook entries purely by the script filename in the
-    /// command — same test as the Python installer, so entries added by either
-    /// path are detected (and cleanly removed) by the other.
-    private static func isConnorPetEntry(_ hook: [String: Any]) -> Bool {
-        (hook["type"] as? String) == "command"
-            && ((hook["command"] as? String)?.contains("claude_hook_status.py") ?? false)
+    /// We recognize our own hook entries by the script filename in the command —
+    /// both the current `pet_hook_status.py` and the legacy `claude_hook_status.py`,
+    /// so a re-install migrates an old six-hook install and either installer path
+    /// (script or app) detects/removes what the other added.
+    private static func isPetEntry(_ hook: [String: Any]) -> Bool {
+        guard (hook["type"] as? String) == "command",
+              let command = hook["command"] as? String else { return false }
+        return command.contains("pet_hook_status.py") || command.contains("claude_hook_status.py")
     }
 
-    /// True when at least one of our hook entries is present in settings.json.
-    /// Drives the menu item's checkmark.
+    /// True when at least one of our hook entries is present in settings.json —
+    /// scanning *all* events (not just the current set) so a legacy six-hook
+    /// install still reads as installed. Drives the menu item's checkmark.
     static func isInstalled() -> Bool {
         guard let settings = try? loadSettings(),
               let hooks = settings["hooks"] as? [String: Any] else { return false }
-        for (event, _) in hookEvents {
-            guard let blocks = hooks[event] as? [[String: Any]] else { continue }
-            for block in blocks {
+        for (_, value) in hooks {
+            for block in (value as? [[String: Any]] ?? []) {
                 let entries = block["hooks"] as? [[String: Any]] ?? []
-                if entries.contains(where: isConnorPetEntry) { return true }
+                if entries.contains(where: isPetEntry) { return true }
             }
         }
         return false
@@ -95,36 +94,25 @@ enum ClaudeHookInstaller {
 
     // MARK: - Install / uninstall
 
-    /// Copies the bundled hook handler to a stable path and merges our six hook
-    /// blocks into settings.json. Never touches existing (non-ours) hook blocks,
-    /// and is safe to re-run — a block already carrying our entry is left as-is.
+    /// Copies the bundled hook handler to a stable path and merges our hook blocks
+    /// into settings.json. Clears any prior entries of ours first (a legacy
+    /// six-hook install, or a previous run) so it always converges to exactly
+    /// `hookEvents` — this is what makes re-running safe and migrating automatic.
+    /// Never touches existing (non-ours) hook blocks.
     @discardableResult
     static func install() throws -> [String] {
         try installBundledScript()
 
         var settings = try loadSettings()
         var hooks = settings["hooks"] as? [String: Any] ?? [:]
+        _ = removePetEntries(from: &hooks) // migrate/dedupe before adding
+
         var added: [String] = []
-
         for (event, state) in hookEvents {
+            // Always add our own dedicated block (never merge into a matcher-scoped
+            // one, which would silently narrow when our hook fires).
             var blocks = hooks[event] as? [[String: Any]] ?? []
-
-            // Never merge into an existing block: a block scoped by a matcher
-            // (e.g. {"matcher": "Bash", ...}) only fires for that matcher, so
-            // appending there would silently narrow our hook. Always add our own
-            // dedicated block instead. (Mirrors install_claude_hooks.py.)
-            let alreadyInstalled = blocks.contains { block in
-                (block["hooks"] as? [[String: Any]] ?? []).contains(where: isConnorPetEntry)
-            }
-            if alreadyInstalled { continue }
-
-            var newBlock: [String: Any] = [
-                "hooks": [["type": "command", "command": command(for: state)]]
-            ]
-            if event == "PreToolUse" || event == "PostToolUse" {
-                newBlock["matcher"] = "*" // explicit "all tools", matching Orca's convention
-            }
-            blocks.append(newBlock)
+            blocks.append(["hooks": [["type": "command", "command": command(for: state)]]])
             hooks[event] = blocks
             added.append(event)
         }
@@ -134,26 +122,35 @@ enum ClaudeHookInstaller {
         return added
     }
 
-    /// Removes only the entries we added, dropping any block that becomes empty
-    /// as a result (i.e. blocks we created solely for our hook). Leaves the
-    /// copied script file in place — harmless, and a re-install reuses it.
+    /// Removes only the entries we added (current or legacy naming), dropping any
+    /// block/event that becomes empty. Leaves the copied script file in place —
+    /// harmless, and a re-install reuses it.
     @discardableResult
     static func uninstall() throws -> [String] {
         var settings = try loadSettings()
         guard var hooks = settings["hooks"] as? [String: Any] else { return [] }
-        var removed: [String] = []
+        let removed = removePetEntries(from: &hooks)
+        settings["hooks"] = hooks
+        try saveSettings(settings)
+        return removed
+    }
 
+    /// Strips every entry we own from all events, dropping blocks (and events)
+    /// that become empty. Mutates `hooks` in place; returns the events touched.
+    /// Shared by install (migrate) and uninstall — mirrors `remove_pet_entries`
+    /// in install_claude_hooks.py.
+    @discardableResult
+    private static func removePetEntries(from hooks: inout [String: Any]) -> [String] {
+        var removed: [String] = []
         for event in Array(hooks.keys) {
             guard let blocks = hooks[event] as? [[String: Any]] else { continue }
             var remainingBlocks: [[String: Any]] = []
             for var block in blocks {
                 let blockHooks = block["hooks"] as? [[String: Any]] ?? []
-                let kept = blockHooks.filter { !isConnorPetEntry($0) }
+                let kept = blockHooks.filter { !isPetEntry($0) }
                 if kept.count != blockHooks.count {
                     removed.append(event)
-                    if kept.isEmpty {
-                        continue // a block we created solely for our hook — drop it entirely
-                    }
+                    if kept.isEmpty { continue }
                     block["hooks"] = kept
                 }
                 remainingBlocks.append(block)
@@ -164,9 +161,6 @@ enum ClaudeHookInstaller {
                 hooks[event] = remainingBlocks
             }
         }
-
-        settings["hooks"] = hooks
-        try saveSettings(settings)
         return Array(Set(removed))
     }
 
@@ -174,7 +168,7 @@ enum ClaudeHookInstaller {
 
     private static func installBundledScript() throws {
         guard let bundledURL = AppDelegate.resourceBundle.url(
-            forResource: "claude_hook_status", withExtension: "py", subdirectory: "hooks"
+            forResource: "pet_hook_status", withExtension: "py", subdirectory: "hooks"
         ) else {
             throw InstallError.bundledScriptMissing
         }
@@ -221,7 +215,7 @@ enum ClaudeHookInstaller {
 
             if fm.fileExists(atPath: settingsURL.path) {
                 let stamp = Int(Date().timeIntervalSince1970)
-                let backup = settingsURL.appendingPathExtension("connor-pet-backup.\(stamp)")
+                let backup = settingsURL.appendingPathExtension("pet-backup.\(stamp)")
                 try? fm.removeItem(at: backup)
                 try fm.copyItem(at: settingsURL, to: backup)
             }
