@@ -84,14 +84,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var petDisplayNames: [String: String] = [:]
     private var selectedPetSlug = availablePetSlugs[0]
 
-    // Which live status source drives the pet's animation. "claude-code" polls
-    // ~/.claude/sessions/*.json every 250ms; "orca" polls Orca's last-status.json
-    // every 1s. ("claude-desktop" watches the Claude desktop app via renderer CPU
-    // + the Notification Center DB via ClaudeDesktopStatusWatcher — 일시 비활성화:
-    // 아직 정확도가 낮아 선택 목록에서만 뺐고, 워처/전환 코드는 남겨 둔다.)
-    private static let availableStatusSources = ["claude-code", "orca"]
+    // Which live status source drives the pet's animation. "claude-desktop" reads
+    // the Claude desktop app's Accessibility tree (+ Notification Center DB) via
+    // ClaudeDesktopStatusWatcher; "claude-code" polls ~/.claude/sessions/*.json
+    // every 250ms; "orca" polls Orca's last-status.json every 1s. This order is
+    // used *everywhere* — menu-bar picker, settings, and the first-run wizard:
+    // Claude Desktop, then Claude Code, then Orca. [0] is also the default source.
+    private static let availableStatusSources = ["claude-desktop", "claude-code", "orca"]
     private static let statusSourceDisplayNames = [
         "claude-code": "Claude Code",
+        "claude-desktop": "Claude Desktop",
         "orca": "Orca",
     ]
     private var selectedStatusSource = availableStatusSources[0]
@@ -152,6 +154,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
            petDisplayNames.keys.contains(forced) {
             selectedPetSlug = forced
         }
+
+        // Which source drives the pet — read now (before the first-run wizard) so
+        // that dismissing the wizard keeps this saved/default value.
+        selectedStatusSource = Self.savedStatusSource(fallback: Self.availableStatusSources[0])
+
+        // 첫 실행(설치 후 최초 1회, 재실행은 X)에만 뜨는 마법사: ①펫 고르기(이미지)
+        // → ②사용하는 앱 고르기. 고른 값을 selectedPetSlug/selectedStatusSource 에
+        // 반영·저장하고, 이후엔 저장된 값을 그대로 복원한다.
+        maybeRunFirstRunWizard()
 
         guard let sheet = try? Self.loadSpriteSheet(slug: selectedPetSlug) else {
             fatalError("connor-pet: bundled pet '\(selectedPetSlug)' not found")
@@ -244,7 +255,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         setUpStatusItem()
         setUpUpdater()
 
-selectedStatusSource = Self.savedStatusSource(fallback: Self.availableStatusSources[0])
+        // selectedStatusSource was resolved (and possibly set by the first-run
+        // wizard) before the window was built — just start its watcher.
         startWatcher(for: selectedStatusSource)
 
         startBattleService()
@@ -934,6 +946,53 @@ selectedStatusSource = Self.savedStatusSource(fallback: Self.availableStatusSour
         watcher = newWatcher
     }
 
+    // MARK: - First-run wizard
+
+    /// 설치 후 최초 1회만 뜨는 2단계 마법사: ①펫 고르기(이미지) → ②사용하는 앱
+    /// 고르기(Claude Code / Claude Desktop / Orca). 고른 값을 즉시 반영·저장하고
+    /// 완료 플래그를 남겨 재실행 때는 뜨지 않는다. 창을 만들기 *전에* 불려서
+    /// 마법사에서 고른 펫으로 창을 띄운다.
+    private func maybeRunFirstRunWizard() {
+        guard !Self.didCompleteFirstRun() else { return }
+        // 헤드리스 셀프테스트/설정 PNG 덤프/강제 펫 지정 실행에서는 모달로 막지 않는다.
+        let env = ProcessInfo.processInfo.environment
+        if env["CONNORPET_SELFTEST"] != nil || env["CONNORPET_DEBUG_SETTINGS"] != nil || env["CONNORPET_PET"] != nil {
+            return
+        }
+
+        // 펫 선택지(썸네일 = idle 첫 프레임)를 메뉴와 같은 순서로 만든다.
+        let pets: [FirstRunWizard.PetOption] = Self.availablePetSlugs.compactMap { slug in
+            guard let name = petDisplayNames[slug] else { return nil }
+            let image = (try? Self.loadSpriteSheet(slug: slug))?
+                .resolvedAnimation(for: .idle)?.images.first
+            return FirstRunWizard.PetOption(slug: slug, name: name, image: image)
+        }
+        let sources = Self.availableStatusSources.map {
+            FirstRunWizard.SourceOption(id: $0, name: Self.statusSourceDisplayNames[$0] ?? $0,
+                                        icon: Self.sourceIcon($0))
+        }
+
+        let result = FirstRunWizard.run(pets: pets, sources: sources)
+        if let slug = result.petSlug, petDisplayNames[slug] != nil {
+            selectedPetSlug = slug
+            Self.savePetSlug(slug)
+        }
+        if let source = result.sourceID, Self.availableStatusSources.contains(source) {
+            selectedStatusSource = source
+            Self.saveStatusSource(source)
+        }
+        Self.markFirstRunComplete()
+    }
+
+    /// Bundled step-2 app icon for a status source (`Resources/source-icons/<id>.png`).
+    /// See Package.swift for the artwork sources/licenses.
+    private static func sourceIcon(_ id: String) -> NSImage? {
+        guard let url = Bundle.module.url(forResource: id, withExtension: "png", subdirectory: "source-icons") else {
+            return nil
+        }
+        return NSImage(contentsOf: url)
+    }
+
     // MARK: - 펫별 경험치 저장
 
     private static let petTokensDefaultsKey = "petTokens"
@@ -1172,6 +1231,22 @@ selectedStatusSource = Self.savedStatusSource(fallback: Self.availableStatusSour
             return fallback
         }
         return saved
+    }
+
+    // MARK: - First-run flag persistence
+
+    // Whether the first-run wizard (pet + source picker) has already been shown.
+    // Set once and never cleared, so it appears on first install only, not on
+    // relaunch. (swift-run and the .app use different UserDefaults domains, so
+    // each sees its own first run — see README.)
+    private static let didCompleteFirstRunDefaultsKey = "didCompleteFirstRun"
+
+    private static func didCompleteFirstRun() -> Bool {
+        UserDefaults.standard.bool(forKey: didCompleteFirstRunDefaultsKey)
+    }
+
+    private static func markFirstRunComplete() {
+        UserDefaults.standard.set(true, forKey: didCompleteFirstRunDefaultsKey)
     }
 
     // MARK: - XP bar visibility persistence
