@@ -326,8 +326,11 @@ final class BattleService {
             conn.onClose = { finish(.failed) }
             conn.start()
 
-            // No answer in time → treat as failure so the UI doesn't hang.
-            self.queue.asyncAfter(deadline: .now() + 15) { finish(.failed) }
+            // No answer in time → treat as failure so the UI doesn't hang. This
+            // window matches the challenger's 20s countdown bar (AppDelegate's
+            // challengeWaitSeconds): the accepter has ~10s to tap the "Challenge"
+            // bubble plus time to accept/decline the modal before we give up.
+            self.queue.asyncAfter(deadline: .now() + 20) { finish(.failed) }
         }
     }
 

@@ -7,16 +7,26 @@ import AppKit
 /// banner instead, in the spirit of the Digimon battle screen, with a green
 /// Accept button. Shown modally; returns the user's choice synchronously.
 enum BattleDialog {
-    /// Incoming-challenge accept/decline. Returns true if accepted.
-    @discardableResult
-    static func challenge(fromName: String) -> Bool {
+    /// 신청받은 쪽이 "Challenge" 말풍선을 눌렀을 때 뜨는 수락/거절 모달의 결과.
+    /// `timedOut` 은 `timeout` 안에 아무 버튼도 안 눌러 스스로 닫힌 경우 — 무응답이라
+    /// 신청자에게 거절을 보내지 않고, 신청자 쪽 카운트다운이 "응답하지 않음"으로
+    /// 마무리하게 둔다.
+    enum ChallengeChoice { case accept, decline, timedOut }
+
+    /// Incoming-challenge accept/decline. `timeout` 을 주면 그 시간 뒤 스스로 닫히며
+    /// `.timedOut` 을 돌려준다(무응답).
+    static func challenge(fromName: String, timeout: TimeInterval? = nil) -> ChallengeChoice {
         let controller = DialogController(
             showsBanner: true,
             title: "대전 신청",
             message: "\(fromName)님이 대전을\n신청했어요. 수락할까요?",
             buttons: [.init(title: "거절", kind: .secondary), .init(title: "수락", kind: .primary)]
         )
-        return controller.runModal() == 1
+        switch controller.runModal(autoDismissAfter: timeout) {
+        case 1: return .accept
+        case DialogController.timeoutCode: return .timedOut
+        default: return .decline
+        }
     }
 
     /// 되돌릴 수 없는 동작을 확인받는다. 기본 버튼이 취소라, 실수로 Return 을
@@ -59,11 +69,16 @@ final class DialogController: NSObject {
         let kind: Kind
     }
 
+    /// `runModal` 이 시간 초과로 스스로 닫힐 때 돌려주는 값. 실제 버튼 tag(0,1…)과
+    /// 절대 겹치지 않게 큰 음수를 쓴다.
+    static let timeoutCode = -777
+
     private let showsBanner: Bool
     private let title: String
     private let message: String
     private let buttons: [Button]
     private var panel: NSPanel?
+    private var autoDismissTimer: Timer?
 
     init(showsBanner: Bool, title: String, message: String, buttons: [Button]) {
         self.showsBanner = showsBanner
@@ -72,7 +87,7 @@ final class DialogController: NSObject {
         self.buttons = buttons
     }
 
-    func runModal() -> Int {
+    func runModal(autoDismissAfter: TimeInterval? = nil) -> Int {
         let width: CGFloat = 380
         let height: CGFloat = showsBanner ? 324 : 208
         let panel = KeyablePanel(
@@ -117,13 +132,29 @@ final class DialogController: NSObject {
         NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
 
+        // 시간 안에 아무 버튼도 안 누르면 스스로 닫는다. 모달 실행 중에는 런루프가
+        // .modalPanel 모드로 도므로, 그 모드에 타이머를 넣어야 실제로 발화한다
+        // (기본 .default 모드 타이머는 모달 중 안 뜬다).
+        if let secs = autoDismissAfter {
+            let t = Timer(timeInterval: secs, repeats: false) { [weak self] _ in
+                self?.autoDismissTimer = nil
+                NSApp.stopModal(withCode: NSApplication.ModalResponse(rawValue: Self.timeoutCode))
+            }
+            RunLoop.main.add(t, forMode: .modalPanel)
+            autoDismissTimer = t
+        }
+
         let response = NSApp.runModal(for: panel)
+        autoDismissTimer?.invalidate()
+        autoDismissTimer = nil
         panel.orderOut(nil)
         self.panel = nil
         return response.rawValue
     }
 
     @objc private func buttonPressed(_ sender: NSButton) {
+        autoDismissTimer?.invalidate()
+        autoDismissTimer = nil
         NSApp.stopModal(withCode: NSApplication.ModalResponse(rawValue: sender.tag))
     }
 }
