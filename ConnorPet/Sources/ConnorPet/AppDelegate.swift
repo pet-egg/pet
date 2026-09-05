@@ -1,9 +1,17 @@
 import AppKit
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var window: PetWindow?
     private var petView: PetView?
     private var statusItem: NSStatusItem?
+    // 상태바 메뉴는 **한 번만** 만들어 재사용한다. 예전에는 상태가 바뀔 때마다
+    // 새 NSMenu 를 만들어 `statusItem.menu` 에 통째로 갈아 끼웠는데, 메뉴가 열려
+    // 추적 중인 순간(메뉴 항목 클릭 처리 도중이나 대전 피어 갱신이 비동기로 끼어들
+    // 때)에 갈아 끼우면 AppKit 이 아직 쓰고 있던 옛 메뉴가 해제돼 objc_msgSend 가
+    // 죽은 객체를 건드려 크래시 났다("진화 사용" 클릭 시 앱 종료 버그). 이제는 이
+    // 인스턴스를 계속 두고, 델리게이트의 menuNeedsUpdate(열리기 직전, 추적 전에
+    // 불림)에서만 항목을 다시 채운다.
+    private let statusMenu = NSMenu()
     // In-app updater (Sparkle). Only created for packaged builds that carry a
     // SUFeedURL — see UpdaterManager.isConfigured. `updateAvailable`/`updateVersion`
     // are driven by the silent launch check and reflected in the menu.
@@ -295,7 +303,7 @@ selectedStatusSource = Self.savedStatusSource(fallback: Self.availableStatusSour
         let service = BattleService(petSlug: selectedPetSlug)
         service.onPeersChanged = { [weak self] peers in
             self?.battlePeers = peers
-            self?.rebuildMenu()
+            self?.statusDidChange()
             self?.maybeAutoChallenge()
         }
         service.onIncomingChallenge = { [weak self] fromName, respond in
@@ -600,8 +608,21 @@ selectedStatusSource = Self.savedStatusSource(fallback: Self.availableStatusSour
     private func setUpStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         item.button?.image = Self.makeStatusIcon()
+        // We manage enablement ourselves (to gray out disabled rows); every other
+        // item defaults to enabled. 델리게이트를 걸어 두면 메뉴가 열리기 직전마다
+        // menuNeedsUpdate 로 항목을 다시 채운다 — 상태 변화는 그때 반영된다.
+        statusMenu.autoenablesItems = false
+        statusMenu.delegate = self
+        populateStatusMenu() // 첫 표시 전에도 비어 있지 않도록 한 번 채워 둔다
+        item.menu = statusMenu
         statusItem = item
-        rebuildMenu()
+    }
+
+    // 메뉴가 열리기 직전(추적 시작 전) AppKit 이 부른다. 이 시점에만 항목을 다시
+    // 채우므로, 열려 있는 메뉴를 건드리는 일이 없어 갈아끼우기 크래시가 안 난다.
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        guard menu === statusMenu else { return }
+        populateStatusMenu()
     }
 
     // MARK: - In-app update (Sparkle)
@@ -617,7 +638,7 @@ selectedStatusSource = Self.savedStatusSource(fallback: Self.availableStatusSour
             guard let self else { return }
             self.updateAvailable = available
             self.updateVersion = version
-            self.rebuildMenu()
+            self.statusDidChange()
         }
         updater = mgr
         mgr.checkQuietlyOnLaunch()
@@ -661,11 +682,12 @@ selectedStatusSource = Self.savedStatusSource(fallback: Self.availableStatusSour
 
     // MARK: - Menu-bar pet picker
 
-    private func rebuildMenu() {
-        let menu = NSMenu()
-        // We manage enablement ourselves (to gray out the threshold submenu when
-        // evolution is off); every other item defaults to enabled.
-        menu.autoenablesItems = false
+    /// 상태바 메뉴 항목을 **기존 인스턴스(statusMenu)에 다시 채운다.** 새 NSMenu 를
+    /// 만들어 갈아 끼우지 않는다 — 그게 열린 메뉴를 해제시켜 크래시 나던 원인이었다.
+    /// 오직 setUpStatusItem 초기화와 menuNeedsUpdate(열리기 직전)에서만 부른다.
+    private func populateStatusMenu() {
+        let menu = statusMenu
+        menu.removeAllItems()
         // 펫 선택은 메뉴바에서 제거하고 설정 창에서만 바꾸도록 함 — 노치/과밀로
         // 목록이 길어지는 것을 막고 설정 창으로 진입점을 일원화한다.
         for source in Self.availableStatusSources {
@@ -733,10 +755,15 @@ selectedStatusSource = Self.savedStatusSource(fallback: Self.availableStatusSour
         let quitItem = NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
-        statusItem?.menu = menu
+        // statusMenu 는 이미 statusItem.menu 로 걸려 있으므로 다시 대입하지 않는다.
+    }
 
-        // 같은 값을 보여 주는 설정 창이 떠 있으면 함께 갱신한다(대전 상대 목록,
-        // 훅/권한 상태 등이 밖에서 바뀔 수 있다). rebuild 는 창이 보일 때만 돈다.
+    /// 상태가 바뀌었을 때 부른다. 메뉴는 다음에 열릴 때 menuNeedsUpdate 로 알아서
+    /// 다시 채워지므로 여기서 건드리지 않는다(그게 크래시 원인이었다). 대신, 같은
+    /// 값을 보여 주는 설정 창이 떠 있으면 함께 갱신한다(대전 상대 목록, 훅/권한
+    /// 상태, 진화/경험치 토글 등이 메뉴바나 밖에서 바뀔 수 있다). refresh 는 창이
+    /// 보일 때만 실제로 돈다.
+    private func statusDidChange() {
         settingsController?.refresh()
     }
 
@@ -784,7 +811,7 @@ selectedStatusSource = Self.savedStatusSource(fallback: Self.availableStatusSour
                 showInfo(title: "훅 설치 실패", text: error.localizedDescription)
             }
         }
-        rebuildMenu()
+        statusDidChange()
     }
 
     /// Opens the Full Disk Access settings pane so the Claude Desktop source can
@@ -815,7 +842,7 @@ selectedStatusSource = Self.savedStatusSource(fallback: Self.availableStatusSour
         barAlwaysVisible = on
         petView?.setBarAlwaysVisible(barAlwaysVisible)
         Self.saveBarAlwaysVisible(barAlwaysVisible)
-        rebuildMenu()
+        statusDidChange()
     }
 
     // MARK: - Menu-bar evolution controls
@@ -842,7 +869,7 @@ selectedStatusSource = Self.savedStatusSource(fallback: Self.availableStatusSour
         savePetTokens()
         currentPercent = 0
         applyStage()   // 단계가 0으로 떨어지고 refreshDisplayedPet 이 기본형으로 되돌린다
-        rebuildMenu()
+        statusDidChange()
     }
 
     @objc private func toggleEvolutionEnabled() { setEvolutionEnabled(!evolutionEnabled) }
@@ -853,7 +880,7 @@ selectedStatusSource = Self.savedStatusSource(fallback: Self.availableStatusSour
         evolutionEnabled = on
         Self.saveEvolutionEnabled(evolutionEnabled)
         applyStage() // evolve to the earned stage, or revert to base, immediately
-        rebuildMenu()
+        statusDidChange()
     }
 
     /// 메뉴바·설정창 공통 진입점. 펫을 바꾸고 상태를 다시 잡는다.
@@ -874,7 +901,7 @@ selectedStatusSource = Self.savedStatusSource(fallback: Self.availableStatusSour
         // Re-derive the shown form from the new base + current XP stage (so
         // picking a pet while already "leveled up" shows its evolved form).
         refreshDisplayedPet()
-        rebuildMenu()
+        statusDidChange()
     }
 
     // MARK: - Menu-bar status-source picker
@@ -890,7 +917,7 @@ selectedStatusSource = Self.savedStatusSource(fallback: Self.availableStatusSour
         selectedStatusSource = source
         Self.saveStatusSource(source)
         startWatcher(for: source)
-        rebuildMenu()
+        statusDidChange()
     }
 
     private func startWatcher(for source: String) {
