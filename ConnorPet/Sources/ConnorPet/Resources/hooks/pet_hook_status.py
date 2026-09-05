@@ -77,8 +77,15 @@ def last_tool_errored(transcript_path):
 
 def main():
     if len(sys.argv) != 2 or sys.argv[1] not in ("done", "remove"):
-        print("usage: pet_hook_status.py <done|remove>", file=sys.stderr)
-        return 1
+        # Silently no-op (exit 0) on any unrecognized argument. A leftover or
+        # legacy hook entry may still invoke us with an old action like
+        # "working"/"blocked" — those states now come from the session file,
+        # not hooks, so there is genuinely nothing to do. Exiting 0 with no
+        # output means such a stale hook can't spam the user with errors on
+        # every prompt/tool; re-running the installer is what actually prunes
+        # the entry. (A broken *path* still fails before we run — that case
+        # needs the installer/uninstaller to clean up.)
+        return 0
 
     action = sys.argv[1]
     try:

@@ -64,7 +64,7 @@ python3 scripts/install_claude_hooks.py --uninstall  # connor-pet이 추가한 �
 | `Stop` | 에이전트가 턴을 마치고 제어권을 사용자에게 돌려줌 | `done` → **헤롱헤롱** (마지막 도구가 실패했으면 `failed` → **실패**) |
 | `SessionEnd` | 세션 종료 | 해당 항목 제거 |
 
-> 예전 버전은 여기에 `UserPromptSubmit`/`PreToolUse`(→`working`)와 `PermissionRequest`/`Notification`(→`blocked`)까지 6개를 걸었지만, 달리기/얼음은 이제 세션 파일에서 직접 나오므로 지웠습니다. 재설치하면 남아 있던 옛 훅은 자동으로 정리됩니다.
+> 예전 버전은 여기에 `UserPromptSubmit`/`PreToolUse`(→`working`)와 `PermissionRequest`/`Notification`(→`blocked`)까지 6개를 걸었지만, 달리기/얼음은 이제 세션 파일에서 직접 나오므로 지웠습니다. 재설치하면 남아 있던 옛 훅은 자동으로 정리됩니다. 정리 전이라도, `pet_hook_status.py`는 모르는 인자(`working`/`blocked` 등)로 불리면 **조용히 아무것도 안 하고 종료(exit 0)**하므로 남은 옛 훅이 에러를 뿜지 않습니다 — 스크립트 경로 자체가 깨진 경우(저장소 이동/삭제)만은 스크립트가 못 돌아 재설치/제거가 필요합니다(앱 설치 사용자는 안정 경로 `~/.claude/pet/`를 써서 안 깨집니다).
 
 #### 실패와 시간 감쇠
 
