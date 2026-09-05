@@ -39,8 +39,8 @@ final class SpriteSheet {
     /// menu-bar picker and the battle screen so both resolve characters the same way.
     static func bundled(slug: String) throws -> SpriteSheet {
         guard
-            let spritesheetURL = Bundle.module.url(forResource: "spritesheet", withExtension: "png", subdirectory: "pets/\(slug)"),
-            let manifestURL = Bundle.module.url(forResource: "pet", withExtension: "json", subdirectory: "pets/\(slug)")
+            let spritesheetURL = AppDelegate.resourceBundle.url(forResource: "spritesheet", withExtension: "png", subdirectory: "pets/\(slug)"),
+            let manifestURL = AppDelegate.resourceBundle.url(forResource: "pet", withExtension: "json", subdirectory: "pets/\(slug)")
         else {
             throw NSError(domain: "ConnorPet", code: 1, userInfo: [NSLocalizedDescriptionKey: "missing bundled resources for pet '\(slug)'"])
         }
