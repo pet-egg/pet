@@ -968,7 +968,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return FirstRunWizard.PetOption(slug: slug, name: name, image: image)
         }
         let sources = Self.availableStatusSources.map {
-            FirstRunWizard.SourceOption(id: $0, name: Self.statusSourceDisplayNames[$0] ?? $0)
+            FirstRunWizard.SourceOption(id: $0, name: Self.statusSourceDisplayNames[$0] ?? $0,
+                                        icon: Self.sourceIcon($0))
         }
 
         let result = FirstRunWizard.run(pets: pets, sources: sources)
@@ -981,6 +982,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             Self.saveStatusSource(source)
         }
         Self.markFirstRunComplete()
+    }
+
+    /// Bundled step-2 app icon for a status source (`Resources/source-icons/<id>.png`).
+    /// See Package.swift for the artwork sources/licenses.
+    private static func sourceIcon(_ id: String) -> NSImage? {
+        guard let url = Bundle.module.url(forResource: id, withExtension: "png", subdirectory: "source-icons") else {
+            return nil
+        }
+        return NSImage(contentsOf: url)
     }
 
     // MARK: - 펫별 경험치 저장

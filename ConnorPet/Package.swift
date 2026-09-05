@@ -19,6 +19,10 @@ let package = Package(
             resources: [
                 .copy("Resources/pets"),
                 .copy("Resources/effects"),
+                // First-run wizard step-2 app icons (Claude Desktop = Claude
+                // sunburst [Simple Icons, CC0], Claude Code = "Clawd" pixel
+                // reconstruction, Orca = killer whale [Twemoji, CC-BY 4.0]).
+                .copy("Resources/source-icons"),
                 // Bundled copy of scripts/pet_hook_status.py so the in-app
                 // "Claude Code 상태 훅 설치" menu action works from a DMG install
                 // (where the repo's scripts/ dir isn't on disk). Must stay

@@ -14,7 +14,7 @@ import AppKit
 /// default.
 enum FirstRunWizard {
     struct PetOption { let slug: String; let name: String; let image: NSImage? }
-    struct SourceOption { let id: String; let name: String }
+    struct SourceOption { let id: String; let name: String; let icon: NSImage? }
     struct Result { let petSlug: String?; let sourceID: String? }
 
     static func run(pets: [PetOption], sources: [SourceOption]) -> Result {
@@ -124,7 +124,7 @@ private final class FirstRunWizardController: NSObject {
         var y = size.height - pad - titleH - rowH
         for (i, source) in sources.enumerated() {
             let button = WizardButton(frame: NSRect(x: pad, y: y, width: width - pad * 2, height: rowH))
-            button.configureRow(title: source.name)
+            button.configureRow(title: source.name, icon: source.icon)
             button.tag = i
             button.target = self
             button.action = #selector(sourcePicked(_:))
@@ -225,12 +225,56 @@ private final class WizardButton: NSButton {
         ])
     }
 
-    func configureRow(title: String) {
-        imagePosition = .noImage
-        attributedTitle = NSAttributedString(string: title, attributes: [
-            .font: NSFont.systemFont(ofSize: 16, weight: .semibold),
-            .foregroundColor: NSColor.white,
-        ])
+    /// A source row: a white rounded tile holding the app's glyph, then the name.
+    /// Left-aligned. The image view + label are children of this button; hits are
+    /// routed to the button via `hitTest`, so the whole pill stays clickable.
+    func configureRow(title: String, icon: NSImage?) {
+        attributedTitle = NSAttributedString(string: "")
+        setAccessibilityLabel(title)   // name lives in a child label, so set it here
+        let tile: CGFloat = 38, inset: CGFloat = 16, gap: CGFloat = 14
+        let iv = NSImageView(frame: NSRect(x: inset, y: (bounds.height - tile) / 2, width: tile, height: tile))
+        iv.image = Self.composeTile(icon)
+        iv.imageScaling = .scaleProportionallyUpOrDown
+        iv.autoresizingMask = [.minYMargin, .maxYMargin]
+        addSubview(iv)
+
+        let label = NSTextField(labelWithString: title)
+        label.font = .systemFont(ofSize: 16, weight: .semibold)
+        label.textColor = .white
+        label.backgroundColor = .clear
+        label.isBordered = false
+        let lx = inset + tile + gap
+        label.frame = NSRect(x: lx, y: (bounds.height - 22) / 2, width: bounds.width - lx - inset, height: 22)
+        label.autoresizingMask = [.width, .minYMargin, .maxYMargin]
+        addSubview(label)
+    }
+
+    /// Draws the app glyph centered on a near-white rounded tile — a consistent
+    /// backing so glyphs of any color (orange marks, a black/white orca) read on
+    /// the dark row. Matches the design artifact.
+    private static func composeTile(_ glyph: NSImage?, side: CGFloat = 38, pad: CGFloat = 6) -> NSImage {
+        let img = NSImage(size: NSSize(width: side, height: side))
+        img.lockFocus()
+        NSGraphicsContext.current?.imageInterpolation = .high
+        let rect = NSRect(x: 0, y: 0, width: side, height: side)
+        NSColor(calibratedWhite: 0.96, alpha: 1).setFill()
+        NSBezierPath(roundedRect: rect, xRadius: 9, yRadius: 9).fill()
+        if let glyph {
+            let inner = rect.insetBy(dx: pad, dy: pad)
+            let s = glyph.size
+            let scale = s.width > 0 && s.height > 0 ? min(inner.width / s.width, inner.height / s.height) : 1
+            let w = s.width * scale, h = s.height * scale
+            glyph.draw(in: NSRect(x: inner.midX - w / 2, y: inner.midY - h / 2, width: w, height: h),
+                       from: .zero, operation: .sourceOver, fraction: 1)
+        }
+        img.unlockFocus()
+        return img
+    }
+
+    // The source rows add child views (tile + label); route every hit inside the
+    // pill to the button itself so those children never swallow the click.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        frame.contains(point) ? self : nil
     }
 
     /// Pre-scale a sprite frame to a crisp ~60px thumbnail.
