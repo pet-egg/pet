@@ -31,6 +31,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var battleWindow: BattleWindow?
     private var pendingChallengeAlert = false
 
+    // 대전이 업무를 방해하지 않게, 신청 흐름을 두 단계로 나눈다.
+    //   신청한 쪽 — 펫 위에 20초 카운트다운 막대(challengeCountdown)를 띄우고,
+    //     그 안에 응답이 없으면 "응답하지 않음" 모달을 띄운다.
+    //   신청받은 쪽 — 처음엔 가운데 모달이 아니라 펫 오른쪽 위에 작은 "Challenge"
+    //     말풍선(challengeBubble)만 10초 띄우고, 눌러야 예전 수락/거절 모달이 뜬다.
+    private var challengeBubble: ChallengeBubbleWindow?
+    private var challengeCountdown: ChallengeCountdownWindow?
+    private var pendingChallengeBubble = false
+    private let challengeWaitSeconds: TimeInterval = 20   // 신청자 카운트다운(막대)
+    private let challengeBubbleSeconds: TimeInterval = 10 // 신청받은 쪽 말풍선 노출
+
     // Orca's own default (PET_SIZE_DEFAULT=180) still read as "big" next to the
     // small nav-badge-style pet icon the user is comparing against — sized
     // near Orca's PET_SIZE_MIN=60 floor instead.
@@ -207,6 +218,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         petView = view
         bubble = SpeechBubbleWindow()
         xpDetailWindow = XPDetailWindow()
+        challengeBubble = ChallengeBubbleWindow()
+        challengeCountdown = ChallengeCountdownWindow()
         loadSkillEffect(for: sheet)
 
         setUpStatusItem()
@@ -295,16 +308,23 @@ selectedStatusSource = Self.savedStatusSource(fallback: Self.availableStatusSour
         guard let peerID = sender.representedObject as? String,
               let peer = battlePeers.first(where: { $0.id == peerID }),
               let service = battleService else { return }
-        // Avoid stacking battles.
-        guard battleWindow == nil else { return }
+        // Avoid stacking battles / duplicate countdowns.
+        guard battleWindow == nil, challengeCountdown?.isShowing != true else { return }
+        // 신청자는 20초 카운트다운 막대를 본다. 그 안에 상대가 수락/거절하면 아래
+        // 콜백이 먼저 와서 막대를 감추고, 아무 응답이 없으면 네트워크가 시간이 다 돼
+        // .failed 를 돌려주고 "응답하지 않음" 모달로 이어진다.
+        if let petFrame = window?.frame {
+            challengeCountdown?.show(peerName: peer.name, above: petFrame, duration: challengeWaitSeconds)
+        }
         service.challenge(peer) { [weak self] result in
+            self?.challengeCountdown?.hide()
             switch result {
             case .accepted:
                 break // onBattleStart opens the window
             case .declined:
                 self?.showInfo(title: "대전 거절됨", text: "\(peer.name)님이 대전을 거절했어요.")
             case .failed:
-                self?.showInfo(title: "대전 실패", text: "\(peer.name)님과 연결하지 못했어요.")
+                self?.showInfo(title: "응답 없음", text: "\(peer.name)님이 대전 신청에 응답하지 않았어요.")
             }
         }
     }
@@ -316,14 +336,30 @@ selectedStatusSource = Self.savedStatusSource(fallback: Self.availableStatusSour
             respond(battleWindow == nil)
             return
         }
-        // If we're already in / setting up a battle, auto-decline.
-        guard battleWindow == nil, !pendingChallengeAlert else { respond(false); return }
-        pendingChallengeAlert = true
-        // Custom game-styled modal (a bold "BATTLE" banner instead of NSAlert's
-        // generic folder/app icon) — see BattleChallengeDialog.
-        let accepted = BattleDialog.challenge(fromName: fromName)
-        pendingChallengeAlert = false
-        respond(accepted)
+        // If we're already in / setting up a battle (or handling another
+        // challenge), auto-decline.
+        guard battleWindow == nil, !pendingChallengeBubble, !pendingChallengeAlert,
+              let petFrame = window?.frame else { respond(false); return }
+
+        // 업무 중 갑자기 가운데 모달이 뜨는 걸 막으려고, 먼저 펫 오른쪽 위에 작은
+        // "Challenge" 말풍선만 10초 띄운다. 누르면 예전처럼 가운데 수락/거절 모달로
+        // 이어지고, 누르지 않고 시간이 지나면 응답을 보내지 않는다(무응답).
+        pendingChallengeBubble = true
+        challengeBubble?.onClick = { [weak self] in
+            guard let self else { return }
+            self.pendingChallengeBubble = false
+            // Custom game-styled modal (a bold "BATTLE" banner instead of NSAlert's
+            // generic folder/app icon) — see BattleChallengeDialog.
+            self.pendingChallengeAlert = true
+            let accepted = BattleDialog.challenge(fromName: fromName)
+            self.pendingChallengeAlert = false
+            respond(accepted)
+        }
+        challengeBubble?.show(above: petFrame, duration: challengeBubbleSeconds) { [weak self] in
+            // 시간이 지나도록 누르지 않음 = 무응답. 응답을 보내지 않아, 신청자 쪽은
+            // 카운트다운이 끝나며 "응답하지 않음" 안내를 받는다.
+            self?.pendingChallengeBubble = false
+        }
     }
 
     private func presentBattle(myRole: BattleRole, outcome: BattleOutcome, opponentName: String, opponentPet: String) {
