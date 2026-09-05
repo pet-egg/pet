@@ -1132,22 +1132,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return try SpriteSheet(manifestURL: manifestURL, spritesheetURL: spritesheetURL)
     }
 
-    // SwiftPM's generated Bundle.module only looks for the resource bundle next to
-    // the raw executable (Bundle.main.bundleURL) or a hardcoded build-time path —
-    // neither works once ConnorPet is wrapped in a proper, code-signed .app: a
-    // resource bundle sitting loose at the .app root (outside Contents/) makes
-    // codesign refuse to seal the bundle ("unsealed contents present in the
-    // bundle root"), which macOS then reports as "damaged" once quarantined.
-    // Prefer Contents/Resources first (where the .app packaging step places it);
-    // Bundle.module still covers plain `swift run`/`.build/release/ConnorPet`,
-    // where Bundle.main.resourceURL already points at the same flat directory
-    // the loose bundle sits in.
+    // The SwiftPM resource bundle always sits next to the app's resources:
+    //   - code-signed .app  → Contents/Resources/ConnorPet_ConnorPet.bundle
+    //   - plain `swift run` → .build/<config>/ConnorPet_ConnorPet.bundle
+    // and `Bundle.main.resourceURL` points at that directory in both cases, so this
+    // single lookup covers dev and release alike.
+    //
+    // We deliberately do NOT fall back to SwiftPM's generated `Bundle.module`. Its
+    // only candidates are the .app root (Bundle.main.bundleURL) and a build-time
+    // hardcoded path (`/Users/runner/...` on CI) — the former can't be used because
+    // a loose bundle at the .app root makes codesign refuse to seal it ("unsealed
+    // contents present in the bundle root" → macOS reports "damaged" once
+    // quarantined), and the latter never exists on a user's machine. Both only ever
+    // masked bugs, so a missing bundle should fail loudly here instead.
     static let resourceBundle: Bundle = {
-        if let resourceURL = Bundle.main.resourceURL {
-            let candidate = resourceURL.appendingPathComponent("ConnorPet_ConnorPet.bundle")
-            if let bundle = Bundle(url: candidate) { return bundle }
+        guard
+            let resourceURL = Bundle.main.resourceURL,
+            let bundle = Bundle(url: resourceURL.appendingPathComponent("ConnorPet_ConnorPet.bundle"))
+        else {
+            fatalError("리소스 번들을 찾을 수 없음: \(Bundle.main.resourceURL?.path ?? "nil")/ConnorPet_ConnorPet.bundle")
         }
-        return Bundle.module
+        return bundle
     }()
 
     // Menu-bar glyph for the Totodile pet: a Poké Ball outline, drawn to match
