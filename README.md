@@ -496,7 +496,7 @@ git push origin v1.0.0
 - **릴리스 생성 + `pet.dmg` 업로드** → 다운로드 URL `https://github.com/pet-egg/pet/releases/latest/download/pet.dmg` (appcast 의 enclosure 와 일치)
 - 서명된 **`appcast.xml` 을 Pages 로 배포**
 
-→ 기존 사용자 앱이 다음 실행 때 새 버전을 감지합니다. (수동 `workflow_dispatch` 실행은 릴리스/Pages 없이 아티팩트만 만듭니다.)
+→ 기존 사용자 앱이 다음 실행 때 새 버전을 감지합니다. (배포는 `v*` 태그 푸시로만 트리거됩니다 — 수동 `workflow_dispatch` 트리거는 제거됐습니다.)
 
 > 릴리스에는 서명 키가 필수입니다 — Secret 이 없으면 `appcast.xml` 이 생성되지 않아 `publish-appcast` 잡이 실패합니다(빌드/릴리스 자체는 되지만 자동 업데이트 피드는 안 올라감).
 
