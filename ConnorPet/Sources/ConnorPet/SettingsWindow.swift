@@ -1,4 +1,5 @@
 import AppKit
+import CoreImage
 
 /// 설정 창이 필요로 하는 값 읽기 + 동작 실행을 AppDelegate 로 넘기는 다리.
 /// 메뉴바(상태 아이템)에 있던 기능을 그대로 창에서도 쓰게 하려는 것이므로,
@@ -333,6 +334,14 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         sw.state = on ? .on : .off
         sw.target = self
         sw.action = action
+        // 네이티브 NSSwitch 의 켜짐 색은 시스템 accent(사용자 환경에 따라 초록 등)라
+        // 무채색 카드 룩과 어긋난다. 레이어에 채도 제거 필터를 걸어 accent 와 무관하게
+        // 항상 그레이(그래파이트)로 보이게 한다. 공개 API(CALayer.filters + CoreImage)만 사용.
+        sw.wantsLayer = true
+        if let desaturate = CIFilter(name: "CIColorControls") {
+            desaturate.setValue(0.0, forKey: kCIInputSaturationKey)
+            sw.layer?.filters = [desaturate]
+        }
         return sw
     }
 
