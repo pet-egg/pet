@@ -199,9 +199,12 @@ jobs:
           printf '%s' "$SPARKLE_EDDSA_PRIVATE_KEY" | "$BIN/generate_appcast" appcast_out \
             --ed-key-file - \
             --download-url-prefix "https://github.com/pet-egg/pet/releases/latest/download/"
-          # 펫마다 별도 피드다: appcast.xml → appcast-<slug>.xml (Info.plist SUFeedURL 과 일치)
-          mv appcast_out/appcast.xml "appcast-$PET_SLUG.xml"
-          echo "생성됨: appcast-$PET_SLUG.xml"
+          # generate_appcast 는 앱 Info.plist 의 SUFeedURL 파일명(= appcast-<slug>.xml)을
+          # 그대로 따서 파일을 만든다. 즉 "appcast.xml" 이 아니라 이미 원하는 이름이라,
+          # 고정 이름으로 mv 하면 파일이 없어 실패한다. 실제 생성된 유일한 .xml 을 집어서 꺼낸다.
+          GENERATED="$(ls appcast_out/*.xml | head -1)"
+          mv "$GENERATED" "appcast-$PET_SLUG.xml"
+          echo "생성됨: appcast-$PET_SLUG.xml (원본: $GENERATED)"
 
       - name: Upload appcast artifact
         if: ${{ hashFiles(format('ConnorPet/appcast-{0}.xml', steps.pet.outputs.slug)) != '' }}
