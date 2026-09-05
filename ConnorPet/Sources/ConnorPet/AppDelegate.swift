@@ -78,14 +78,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // Which live status source drives the pet's animation. "claude-code" polls
     // ~/.claude/sessions/*.json every 250ms; "orca" polls Orca's last-status.json
-    // every 1s; "claude-desktop" watches the Claude desktop app via renderer CPU
-    // + the Notification Center DB (see ClaudeCodeStatusWatcher/OrcaStatusWatcher/
-    // ClaudeDesktopStatusWatcher).
-    private static let availableStatusSources = ["claude-code", "orca", "claude-desktop"]
+    // every 1s. ("claude-desktop" watches the Claude desktop app via renderer CPU
+    // + the Notification Center DB via ClaudeDesktopStatusWatcher — 일시 비활성화:
+    // 아직 정확도가 낮아 선택 목록에서만 뺐고, 워처/전환 코드는 남겨 둔다.)
+    private static let availableStatusSources = ["claude-code", "orca"]
     private static let statusSourceDisplayNames = [
         "claude-code": "Claude Code",
         "orca": "Orca",
-        "claude-desktop": "Claude Desktop",
     ]
     private var selectedStatusSource = availableStatusSources[0]
 
