@@ -81,9 +81,20 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     }
 
     /// 창이 떠 있는 동안 상태(대전 상대 목록, 훅 설치 여부 등)가 바뀌면 다시 그린다.
+    ///
+    /// 반드시 **다음 런루프로 미뤄** 다시 그린다. 펫/소스 팝업을 고르면 그 액션이
+    /// (changePet → statusDidChange → refresh 로) 곧장 refresh 를 부르는데, 여기서
+    /// 동기로 rebuildContent 하면 `removeFromSuperview` 가 **아직 메뉴를 추적 중이던
+    /// 바로 그 NSPopUpButton** 을 해제해, AppKit 이 쓰고 있던 죽은 객체를 건드려
+    /// EXC_BAD_ACCESS 로 죽는다("펫 선택 시 앱이 꺼지는" 버그 — 상태바 메뉴
+    /// 갈아끼우기 크래시와 같은 원인). 미루면 컨트롤이 추적을 끝낸 뒤 안전하게
+    /// 재구성된다. 여러 상태 변화가 겹쳐 async 가 여러 번 큐잉돼도 무해하다.
     func refresh() {
         guard isVisible else { return }
-        rebuildContent()
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.isVisible else { return }
+            self.rebuildContent()
+        }
     }
 
     /// 디버그 전용: 화면 캡처 권한 없이도 레이아웃을 눈으로 확인하려고, 내용 뷰를
