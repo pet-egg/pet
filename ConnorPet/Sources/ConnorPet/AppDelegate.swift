@@ -84,13 +84,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var petDisplayNames: [String: String] = [:]
     private var selectedPetSlug = availablePetSlugs[0]
 
-    // Which live status source drives the pet's animation. "claude-code" polls
-    // ~/.claude/sessions/*.json every 250ms; "claude-desktop" reads the Claude
-    // desktop app's Accessibility tree (+ Notification Center DB) via
-    // ClaudeDesktopStatusWatcher; "orca" polls Orca's last-status.json every 1s.
-    // Order here = order in the menu-bar/settings picker: Claude Code, then
-    // Claude Desktop, then Orca.
-    private static let availableStatusSources = ["claude-code", "claude-desktop", "orca"]
+    // Which live status source drives the pet's animation. "claude-desktop" reads
+    // the Claude desktop app's Accessibility tree (+ Notification Center DB) via
+    // ClaudeDesktopStatusWatcher; "claude-code" polls ~/.claude/sessions/*.json
+    // every 250ms; "orca" polls Orca's last-status.json every 1s. This order is
+    // used *everywhere* — menu-bar picker, settings, and the first-run wizard:
+    // Claude Desktop, then Claude Code, then Orca. [0] is also the default source.
+    private static let availableStatusSources = ["claude-desktop", "claude-code", "orca"]
     private static let statusSourceDisplayNames = [
         "claude-code": "Claude Code",
         "claude-desktop": "Claude Desktop",
