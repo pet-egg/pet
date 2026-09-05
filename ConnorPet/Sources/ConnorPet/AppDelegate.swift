@@ -987,7 +987,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Bundled step-2 app icon for a status source (`Resources/source-icons/<id>.png`).
     /// See Package.swift for the artwork sources/licenses.
     private static func sourceIcon(_ id: String) -> NSImage? {
-        guard let url = Bundle.module.url(forResource: id, withExtension: "png", subdirectory: "source-icons") else {
+        guard let url = resourceBundle.url(forResource: id, withExtension: "png", subdirectory: "source-icons") else {
             return nil
         }
         return NSImage(contentsOf: url)
