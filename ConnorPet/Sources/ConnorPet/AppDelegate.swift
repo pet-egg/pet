@@ -43,6 +43,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let challengeBubbleSeconds: TimeInterval = 10 // 신청받은 쪽 말풍선 노출
     private let challengeModalSeconds: TimeInterval = 10  // 말풍선을 누른 뒤 뜨는 수락/거절 모달
 
+    // 펫 우클릭 › "설정…"으로 여는 창. 메뉴바 아이템에 흩어져 있던 기능을 한 곳에
+    // 모아, 메뉴바가 가려 접근 못 하는 사용자도 쓸 수 있게 하는 두 번째 진입점.
+    private var settingsController: SettingsWindowController?
+
     // Orca's own default (PET_SIZE_DEFAULT=180) still read as "big" next to the
     // small nav-badge-style pet icon the user is comparing against — sized
     // near Orca's PET_SIZE_MIN=60 floor instead.
@@ -208,6 +212,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         view.onHoverEnter = { [weak self] in
             self?.watcher?.acknowledgeDone()
         }
+        view.onOpenSettings = { [weak self] in self?.openSettingsWindow() }
         view.onHoverChanged = { [weak self] on in
             self?.xpHovering = on
             self?.updateXPDetailWindow()
@@ -229,6 +234,15 @@ selectedStatusSource = Self.savedStatusSource(fallback: Self.availableStatusSour
         startWatcher(for: selectedStatusSource)
 
         startBattleService()
+
+        // 디버그 전용: 설정창 레이아웃을 PNG 로 떠서 확인하고 곧장 종료한다.
+        if let path = ProcessInfo.processInfo.environment["CONNORPET_DEBUG_SETTINGS"] {
+            let controller = SettingsWindowController()
+            controller.delegate = self
+            controller.debugRenderPNG(to: path)
+            DispatchQueue.main.async { NSApp.terminate(nil) }
+            return
+        }
 
         // 첫 클릭이 원문 발췌로 떨어지지 않도록, 뜨자마자 한 번 요약해 둔다.
         // 클릭과 똑같은 선택 로직을 쓴다.
@@ -306,8 +320,13 @@ selectedStatusSource = Self.savedStatusSource(fallback: Self.availableStatusSour
     }
 
     @objc private func challengePeer(_ sender: NSMenuItem) {
-        guard let peerID = sender.representedObject as? String,
-              let peer = battlePeers.first(where: { $0.id == peerID }),
+        guard let peerID = sender.representedObject as? String else { return }
+        challenge(peerID: peerID)
+    }
+
+    /// 메뉴바·설정창 공통 진입점.
+    private func challenge(peerID: String) {
+        guard let peer = battlePeers.first(where: { $0.id == peerID }),
               let service = battleService else { return }
         // Avoid stacking battles / duplicate countdowns.
         guard battleWindow == nil, challengeCountdown?.isShowing != true else { return }
@@ -433,8 +452,13 @@ selectedStatusSource = Self.savedStatusSource(fallback: Self.availableStatusSour
     }
 
     @objc private func starePeer(_ sender: NSMenuItem) {
-        guard let id = sender.representedObject as? String,
-              let peer = battlePeers.first(where: { $0.id == id }) else { return }
+        guard let id = sender.representedObject as? String else { return }
+        stare(peerID: id)
+    }
+
+    /// 메뉴바·설정창 공통 진입점.
+    private func stare(peerID: String) {
+        guard let peer = battlePeers.first(where: { $0.id == peerID }) else { return }
         battleService?.stare(at: peer)
     }
 
@@ -643,6 +667,20 @@ selectedStatusSource = Self.savedStatusSource(fallback: Self.availableStatusSour
         quitItem.target = self
         menu.addItem(quitItem)
         statusItem?.menu = menu
+
+        // 같은 값을 보여 주는 설정 창이 떠 있으면 함께 갱신한다(대전 상대 목록,
+        // 훅/권한 상태 등이 밖에서 바뀔 수 있다). rebuild 는 창이 보일 때만 돈다.
+        settingsController?.refresh()
+    }
+
+    /// 펫 우클릭 › "설정…" 진입점. 창을 (없으면 만들어) 띄운다.
+    private func openSettingsWindow() {
+        if settingsController == nil {
+            let controller = SettingsWindowController()
+            controller.delegate = self
+            settingsController = controller
+        }
+        settingsController?.show()
     }
 
     /// Installs or removes the Claude Code status hooks. Because this writes to
@@ -697,8 +735,12 @@ selectedStatusSource = Self.savedStatusSource(fallback: Self.availableStatusSour
         FullDiskAccess.openSettings()
     }
 
-    @objc private func toggleBarAlwaysVisible() {
-        barAlwaysVisible.toggle()
+    @objc private func toggleBarAlwaysVisible() { setBarAlwaysVisible(!barAlwaysVisible) }
+
+    /// 메뉴바·설정창 공통 진입점.
+    private func setBarAlwaysVisible(_ on: Bool) {
+        guard on != barAlwaysVisible else { return }
+        barAlwaysVisible = on
         petView?.setBarAlwaysVisible(barAlwaysVisible)
         Self.saveBarAlwaysVisible(barAlwaysVisible)
         rebuildMenu()
@@ -731,15 +773,25 @@ selectedStatusSource = Self.savedStatusSource(fallback: Self.availableStatusSour
         rebuildMenu()
     }
 
-    @objc private func toggleEvolutionEnabled() {
-        evolutionEnabled.toggle()
+    @objc private func toggleEvolutionEnabled() { setEvolutionEnabled(!evolutionEnabled) }
+
+    /// 메뉴바·설정창 공통 진입점.
+    private func setEvolutionEnabled(_ on: Bool) {
+        guard on != evolutionEnabled else { return }
+        evolutionEnabled = on
         Self.saveEvolutionEnabled(evolutionEnabled)
         applyStage() // evolve to the earned stage, or revert to base, immediately
         rebuildMenu()
     }
 
     @objc private func selectPet(_ sender: NSMenuItem) {
-        guard let slug = sender.representedObject as? String, slug != selectedPetSlug else { return }
+        guard let slug = sender.representedObject as? String else { return }
+        changePet(to: slug)
+    }
+
+    /// 메뉴바·설정창 공통 진입점. 펫을 바꾸고 상태를 다시 잡는다.
+    private func changePet(to slug: String) {
+        guard slug != selectedPetSlug else { return }
         // 펫을 바꾸기 전에 지금까지 쌓인 값을 확정해 둔다. 주기 저장만 믿으면
         // 전환 직전 몇 초치가 날아간다.
         tokenSaveTimer?.invalidate(); tokenSaveTimer = nil
@@ -761,7 +813,13 @@ selectedStatusSource = Self.savedStatusSource(fallback: Self.availableStatusSour
     // MARK: - Menu-bar status-source picker
 
     @objc private func selectStatusSource(_ sender: NSMenuItem) {
-        guard let source = sender.representedObject as? String, source != selectedStatusSource else { return }
+        guard let source = sender.representedObject as? String else { return }
+        changeStatusSource(to: source)
+    }
+
+    /// 메뉴바·설정창 공통 진입점.
+    private func changeStatusSource(to source: String) {
+        guard source != selectedStatusSource else { return }
         selectedStatusSource = source
         Self.saveStatusSource(source)
         startWatcher(for: source)
@@ -1087,4 +1145,45 @@ selectedStatusSource = Self.savedStatusSource(fallback: Self.availableStatusSour
         let onScreen = NSScreen.screens.contains { $0.visibleFrame.insetBy(dx: -40, dy: -40).contains(saved) }
         return onScreen ? saved : fallback
     }
+}
+
+// MARK: - 설정 창 다리
+
+/// 설정 창이 읽고 부르는 표면. 전부 메뉴바 아이템이 쓰던 것과 **같은** 코드
+/// 경로(changePet / changeStatusSource / setEvolutionEnabled / toggleClaudeHooks
+/// 등)로 위임해, 어느 쪽에서 바꾸든 동작·저장·메뉴바 갱신이 동일하다.
+extension AppDelegate: SettingsActionsDelegate {
+    var settingsOrderedPets: [(slug: String, name: String)] {
+        Self.availablePetSlugs.compactMap { slug in
+            petDisplayNames[slug].map { (slug, $0) }
+        }
+    }
+    var settingsSelectedPetSlug: String { selectedPetSlug }
+    func settingsSelectPet(slug: String) { changePet(to: slug) }
+
+    var settingsOrderedStatusSources: [(id: String, name: String)] {
+        Self.availableStatusSources.map { ($0, Self.statusSourceDisplayNames[$0] ?? $0) }
+    }
+    var settingsSelectedStatusSource: String { selectedStatusSource }
+    func settingsSelectStatusSource(id: String) { changeStatusSource(to: id) }
+
+    var settingsEvolutionEnabled: Bool { evolutionEnabled }
+    func settingsSetEvolutionEnabled(_ on: Bool) { setEvolutionEnabled(on) }
+    var settingsBarAlwaysVisible: Bool { barAlwaysVisible }
+    func settingsSetBarAlwaysVisible(_ on: Bool) { setBarAlwaysVisible(on) }
+
+    func settingsResetAllXP() { resetAllXP() }
+
+    var settingsHooksInstalled: Bool { ClaudeHookInstaller.isInstalled() }
+    func settingsToggleHooks() { toggleClaudeHooks() }
+    var settingsFullDiskAccessGranted: Bool { FullDiskAccess.isGranted() }
+    func settingsOpenFullDiskAccess() { openFullDiskAccess() }
+
+    var settingsBattlePeers: [(id: String, name: String)] {
+        battlePeers.map { ($0.id, $0.name) }
+    }
+    func settingsChallenge(peerID: String) { challenge(peerID: peerID) }
+    func settingsStare(peerID: String) { stare(peerID: peerID) }
+
+    func settingsQuit() { quit() }
 }
