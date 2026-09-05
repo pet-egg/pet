@@ -666,15 +666,8 @@ selectedStatusSource = Self.savedStatusSource(fallback: Self.availableStatusSour
         // We manage enablement ourselves (to gray out the threshold submenu when
         // evolution is off); every other item defaults to enabled.
         menu.autoenablesItems = false
-        for slug in Self.availablePetSlugs {
-            guard let title = petDisplayNames[slug] else { continue } // resources missing for this slug — skip it
-            let menuItem = NSMenuItem(title: title, action: #selector(selectPet(_:)), keyEquivalent: "")
-            menuItem.target = self
-            menuItem.representedObject = slug
-            menuItem.state = (slug == selectedPetSlug) ? .on : .off
-            menu.addItem(menuItem)
-        }
-        menu.addItem(.separator())
+        // 펫 선택은 메뉴바에서 제거하고 설정 창에서만 바꾸도록 함 — 노치/과밀로
+        // 목록이 길어지는 것을 막고 설정 창으로 진입점을 일원화한다.
         for source in Self.availableStatusSources {
             let title = Self.statusSourceDisplayNames[source] ?? source
             let menuItem = NSMenuItem(title: title, action: #selector(selectStatusSource(_:)), keyEquivalent: "")
@@ -850,11 +843,6 @@ selectedStatusSource = Self.savedStatusSource(fallback: Self.availableStatusSour
         Self.saveEvolutionEnabled(evolutionEnabled)
         applyStage() // evolve to the earned stage, or revert to base, immediately
         rebuildMenu()
-    }
-
-    @objc private func selectPet(_ sender: NSMenuItem) {
-        guard let slug = sender.representedObject as? String else { return }
-        changePet(to: slug)
     }
 
     /// 메뉴바·설정창 공통 진입점. 펫을 바꾸고 상태를 다시 잡는다.
