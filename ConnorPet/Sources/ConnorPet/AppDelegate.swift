@@ -83,7 +83,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // (see scripts/build_sheet.py's PETS list, which is the source of truth for
     // this set). Display names shown in the menu come from each pet's own
     // manifest rather than being duplicated here.
-    private static let availablePetSlugs = ["totodile", "ditto", "charmander", "squirtle", "geodude", "eevee", "chikorita", "torchic", "togepi", "tepig", "snorlax", "gengar", "diglett"]
+    private static let availablePetSlugs = ["totodile", "ditto", "charmander", "squirtle", "geodude", "eevee", "chikorita", "torchic", "togepi", "tepig", "snorlax", "gengar", "diglett", "bichon"]
+
+    /// 대전을 하지 않는 펫. 흰 비숑은 실제 반려견이라 **동물보호 차원에서 대전 불가** —
+    /// 신청/수락/메뉴가 모두 이 목록을 보고 막힌다(불꽃 발사체로 서로를 쏘는 대전은
+    /// 포켓몬 스킨에서나 어울리지, 강아지에게 시킬 일이 아니다). 발견·노려보기는 그대로다.
+    private static let nonBattlePetSlugs: Set<String> = ["bichon"]
+
+    /// 지금 고른 펫이 대전할 수 있는지.
+    private var currentPetCanBattle: Bool { !Self.nonBattlePetSlugs.contains(selectedPetSlug) }
 
     /// 번들에 들어 있는 **모든** 펫 slug — 메뉴에 안 뜨는 진화형까지. 상대가 진화한
     /// 펫으로 노려볼 수 있으므로 초상 검증은 이 목록 전체를 봐야 한다.
@@ -433,6 +441,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // discovered peer automatically (drives two real instances without clicks).
     private func maybeAutoChallenge() {
         guard ProcessInfo.processInfo.environment["CONNORPET_BATTLE_AUTOCHALLENGE"] != nil,
+              currentPetCanBattle,
               battleWindow == nil, let peer = battlePeers.first, let service = battleService else { return }
         service.challenge(peer) { _ in }
     }
@@ -446,6 +455,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func challenge(peerID: String) {
         guard let peer = battlePeers.first(where: { $0.id == peerID }),
               let service = battleService else { return }
+        // 대전을 안 하는 펫(흰 비숑)으로는 신청 자체가 막힌다.
+        guard currentPetCanBattle else {
+            showInfo(title: "대전 안 해요",
+                     text: "이 친구는 대전을 하지 않아요. 🐾\n동물보호 차원에서 비숑은 대전할 수 없어요.")
+            return
+        }
         // Avoid stacking battles / duplicate countdowns.
         guard battleWindow == nil, challengeCountdown?.isShowing != true else { return }
         // 신청자는 20초 카운트다운 막대를 본다. 그 안에 상대가 수락/거절하면 아래
@@ -476,6 +491,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func presentIncomingChallenge(fromName: String, respond: @escaping (Bool) -> Void) {
+        // 대전을 안 하는 펫(흰 비숑)이면 조용히 거절한다 — 상대에겐 "거절됨"으로 간다.
+        // 업무 중 불필요한 말풍선/모달을 띄우지 않는다.
+        guard currentPetCanBattle else { respond(false); return }
         // Test hook: auto-accept without a modal (used to drive two real
         // instances headlessly — see README dev notes).
         if ProcessInfo.processInfo.environment["CONNORPET_BATTLE_AUTOACCEPT"] != nil {
@@ -707,6 +725,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func makeBattleMenuItem() -> NSMenuItem {
         let battleItem = NSMenuItem(title: "대전", action: nil, keyEquivalent: "")
         let submenu = NSMenu()
+        submenu.autoenablesItems = false
+        // 대전을 안 하는 펫(흰 비숑)이면 상대 목록 대신 안내만 띄운다.
+        if !currentPetCanBattle {
+            let note = NSMenuItem(title: "비숑은 대전을 하지 않아요 (동물보호)", action: nil, keyEquivalent: "")
+            note.isEnabled = false
+            submenu.addItem(note)
+            battleItem.submenu = submenu
+            return battleItem
+        }
         if battlePeers.isEmpty {
             let empty = NSMenuItem(title: "주변에 상대가 없어요", action: nil, keyEquivalent: "")
             empty.isEnabled = false
@@ -1682,6 +1709,7 @@ extension AppDelegate: SettingsActionsDelegate {
     var settingsBattlePeers: [(id: String, name: String)] {
         battlePeers.map { ($0.id, $0.name) }
     }
+    var settingsCurrentPetCanBattle: Bool { currentPetCanBattle }
     func settingsChallenge(peerID: String) { challenge(peerID: peerID) }
     func settingsStare(peerID: String) { stare(peerID: peerID) }
 

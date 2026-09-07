@@ -15,6 +15,7 @@ Usage: python3 scripts/build_sheet.py
 import json
 import math
 import os
+import sys
 import urllib.request
 
 from PIL import Image, ImageDraw, ImageEnhance, ImageFont
@@ -294,6 +295,22 @@ PETS = [
             "Custom connor-pet build: Diglett / 디그다 reacts to live Orca agent/project status, "
             "skinned as Pokémon status conditions — blocked/waiting=Freeze, done=Infatuation, "
             "nothing=Sleep, working=running (unchanged). Built from PokeAPI gen5 battle sprites."
+        ),
+    },
+    {
+        # 포켓몬이 아닌 절차적 펫. 도감번호가 없고, 도트를 직접 찍어 만든다
+        # (build_bichon_frames). 실제 반려견이라 **대전은 하지 않는다**(동물보호) —
+        # 그 게이팅은 앱 쪽 AppDelegate.nonBattlePetSlugs 에 있다.
+        "slug": "bichon",
+        "procedural": True,
+        "out_dir_name": "bichon.codex-pet",
+        "id": "bichon-bichon",
+        "display_name": "비숑 (Bichon)",
+        "description": (
+            "Custom connor-pet build: a white Bichon Frise reacts to live Orca/Claude Code "
+            "agent status, skinned as Pokémon status conditions — blocked/waiting=Freeze, "
+            "done=Infatuation, nothing=Sleep, working=running. Hand-drawn pixel art (not from "
+            "PokeAPI). Does not battle, for animal-welfare reasons."
         ),
     },
 ]
@@ -601,18 +618,135 @@ def draw_zzz(frame, t):
     return Image.alpha_composite(frame, overlay)
 
 
+# ---------------------------------------------------------------------------
+# 절차적(procedural) 펫 — PokeAPI 에서 받을 수 없는 캐릭터.
+#
+# 흰색 비숑(Bichon Frise)은 포켓몬이 아니라 도감번호가 없다. 그래서 gen5 배틀
+# 스프라이트를 내려받는 대신 여기서 도트를 직접 찍어 base 프레임 몇 장을 만든다.
+# 만든 프레임은 다른 펫과 **똑같은 파이프라인**(prepare_frames → 상태별 리스킨)을
+# 그대로 탄다 — idle 바운스·달리기·얼음/하트/Zzz 오버레이가 모두 재사용된다.
+# 재실행하면 순수 함수라 똑같은 그림이 다시 나온다(원본 다운로드가 없어 더 확실).
+#
+# 방향: 다른 펫과 맞춰 **왼쪽을 보게** 그린다(뒤집지 않은 프레임 = running-left).
+_BICHON_W, _BICHON_H = 84, 74
+_FLUFF = (252, 252, 254, 255)       # 흰 털
+_FLUFF_RIM = (198, 205, 218, 255)   # 털 가장자리(도트 외곽선 역할)
+_FLUFF_SHADE = (223, 228, 238, 160) # 배 아래 그림자
+_EAR = (232, 226, 240, 255)         # 살짝 라일락빛 늘어진 귀
+_EAR_RIM = (204, 196, 220, 255)
+_EYE = (54, 48, 60, 255)
+_EYE_HI = (255, 255, 255, 235)
+_NOSE = (46, 42, 52, 255)
+_NOSE_HI = (120, 112, 128, 210)
+_MOUTH = (150, 140, 156, 255)
+_BLUSH = (255, 196, 202, 90)
+
+
+def _scallop(draw, cx, cy, rx, ry, n, r, fill):
+    """타원 둘레에 작은 원들을 돌려 찍어 '뭉게구름' 같은 복슬복슬한 외곽을 만든다."""
+    for k in range(n):
+        a = 2 * math.pi * k / n
+        x = cx + rx * math.cos(a)
+        y = cy + ry * math.sin(a)
+        draw.ellipse([x - r, y - r, x + r, y + r], fill=fill)
+    draw.ellipse([cx - rx, cy - ry, cx + rx, cy + ry], fill=fill)
+
+
+def _fluff(draw, cx, cy, rx, ry, n=11, bump=6.5):
+    """가장자리 rim(외곽선) 한 겹을 깔고 그 위에 흰 털을 얹어 1~2px 테두리를 낸다."""
+    _scallop(draw, cx, cy, rx + 2, ry + 2, n, bump + 1.6, _FLUFF_RIM)
+    _scallop(draw, cx, cy, rx, ry, n, bump, _FLUFF)
+
+
+def _leg(draw, x, y):
+    draw.ellipse([x - 6, y - 8, x + 6, y + 8], fill=_FLUFF_RIM)
+    draw.ellipse([x - 5, y - 7, x + 5, y + 7], fill=_FLUFF)
+
+
+def _eye(draw, x, y, blink):
+    if blink:
+        draw.line([x - 3, y, x + 3, y], fill=_EYE, width=2)
+        return
+    draw.ellipse([x - 3.2, y - 3.7, x + 3.2, y + 3.7], fill=_EYE)
+    draw.ellipse([x - 2.0, y - 2.8, x - 0.2, y - 1.0], fill=_EYE_HI)
+
+
+def draw_bichon(t, blink):
+    """왼쪽을 보는 흰 비숑 한 프레임. t 는 루프 위상[0,1), blink 는 눈 깜빡임."""
+    img = Image.new("RGBA", (_BICHON_W, _BICHON_H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+
+    sway = math.sin(2 * math.pi * t)        # 귀·꼬리 흔들림
+    tail_x = 68 + 2 * sway
+    tail_y = 40 - 1.5 * sway
+
+    # 뒤에서 앞으로: 꼬리 → 뒤쪽 귀 → 다리 → 몸통 → 그림자 → 머리 → 앞쪽 귀 → 얼굴
+    _fluff(d, tail_x, tail_y, 8, 8, n=9, bump=5.5)                       # 꼬리 뭉치
+
+    d.ellipse([38, 30 + sway, 50, 46 + sway], fill=_EAR_RIM)             # 뒤쪽(먼) 귀
+    d.ellipse([39, 31 + sway, 49, 45 + sway], fill=_EAR)
+
+    for lx in (28, 40, 52):                                             # 다리
+        _leg(d, lx, 60)
+
+    _fluff(d, 48, 46, 21, 16)                                           # 몸통
+
+    d.ellipse([34, 50, 62, 60], fill=_FLUFF_SHADE)                      # 배 아래 그림자
+
+    _fluff(d, 30, 30, 17, 16)                                          # 머리
+
+    d.ellipse([15, 34 - sway, 27, 52 - sway], fill=_EAR_RIM)            # 앞쪽(가까운) 귀
+    d.ellipse([16, 35 - sway, 26, 51 - sway], fill=_EAR)
+
+    _fluff(d, 19, 33, 6, 6, n=8, bump=4.2)                             # 주둥이 털뭉치
+
+    d.ellipse([25, 30, 33, 37], fill=_BLUSH)                           # 볼터치
+    _eye(d, 24, 28, blink)                                             # 두 눈(3/4 앵글)
+    _eye(d, 34, 29, blink)
+
+    d.ellipse([13, 32, 19, 37], fill=_NOSE)                           # 코
+    d.ellipse([13.6, 32.6, 16, 34.4], fill=_NOSE_HI)
+    d.line([16, 37, 19, 40], fill=_MOUTH, width=1)                    # 입
+    d.line([16, 37, 13, 40], fill=_MOUTH, width=1)
+
+    return img
+
+
+def build_bichon_frames():
+    n = 12
+    frames = []
+    for i in range(n):
+        t = i / n
+        # 12프레임 중 한 프레임만 눈을 감아 이따금 깜빡이게 한다.
+        blink = (i == 6)
+        frames.append(draw_bichon(t, blink))
+    return frames
+
+
+# 절차적 펫의 base 프레임 생성기. build_pet 이 pet["procedural"] 일 때 여기서 뽑는다.
+# (build_bichon_frames 가 위에 정의된 뒤라야 하므로 여기 둔다.)
+PROCEDURAL_BUILDERS = {
+    "bichon": build_bichon_frames,
+}
+
+
 def build_pet(pet):
     global FRAME, SPRITE_TARGET
     FRAME = FRAME_BY_PET.get(pet["slug"], FRAME_DEFAULT)
     SPRITE_TARGET = SPRITE_TARGET_BY_PET.get(pet["slug"], SPRITE_TARGET_DEFAULT)
-    dex_id = pet["dex_id"]
-    front_url = f"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated/{dex_id}.gif"
-    front_path = fetch(front_url, os.path.join(CACHE_DIR, f"{dex_id}_front.gif"))
 
-    front_raw = load_frames(front_path)
+    if pet.get("procedural"):
+        # 포켓몬이 아니라 도감번호가 없는 펫(흰 비숑 등). PokeAPI 대신 도트를 직접
+        # 찍어 base 프레임을 만든다. 이후 파이프라인은 gen5 펫과 완전히 동일하다.
+        front_raw = PROCEDURAL_BUILDERS[pet["slug"]]()
+    else:
+        dex_id = pet["dex_id"]
+        front_url = f"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated/{dex_id}.gif"
+        front_path = fetch(front_url, os.path.join(CACHE_DIR, f"{dex_id}_front.gif"))
+        front_raw = load_frames(front_path)
 
-    # 원본은 55프레임짜리 애니메이션 GIF다. 전 프레임 공통 bbox 로 잘라서
-    # 프레임 간 상대 움직임(호흡·바운스)을 보존하고, 정수배로만 확대한다.
+    # 원본은 55프레임짜리 애니메이션 GIF다(절차적 펫은 위에서 만든 12장). 전 프레임
+    # 공통 bbox 로 잘라서 프레임 간 상대 움직임(호흡·바운스)을 보존하고, 정수배로만 확대한다.
     front_base = prepare_frames(front_raw)
 
     rows = {}
@@ -810,7 +944,16 @@ def build_pet(pet):
 
 
 def main():
-    for pet in PETS:
+    # 인자로 슬러그를 주면 그 펫만 다시 굽는다(예: `build_sheet.py bichon`).
+    # 절차적 펫은 네트워크가 필요 없어 오프라인에서도 이렇게 개별 생성할 수 있다.
+    # 인자가 없으면 예전처럼 전부 굽는다.
+    wanted = set(sys.argv[1:])
+    pets = [p for p in PETS if p["slug"] in wanted] if wanted else PETS
+    if wanted:
+        missing = wanted - {p["slug"] for p in PETS}
+        if missing:
+            raise SystemExit(f"unknown pet slug(s): {', '.join(sorted(missing))}")
+    for pet in pets:
         build_pet(pet)
 
     # Old flat Resources/{spritesheet.png,pet.json} layout is superseded by

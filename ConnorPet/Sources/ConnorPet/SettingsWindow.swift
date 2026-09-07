@@ -39,6 +39,8 @@ protocol SettingsActionsDelegate: AnyObject {
 
     // 대전 / 노려보기 (같은 wifi 상대)
     var settingsBattlePeers: [(id: String, name: String)] { get }
+    /// 지금 고른 펫이 대전할 수 있는지. false(흰 비숑)면 신청 버튼 대신 안내를 띄운다.
+    var settingsCurrentPetCanBattle: Bool { get }
     func settingsChallenge(peerID: String)
     func settingsStare(peerID: String)
 
@@ -430,8 +432,12 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     }
 
     private func battleRows(_ d: SettingsActionsDelegate) -> [RowSpec] {
+        let canBattle = d.settingsCurrentPetCanBattle
         let peers = d.settingsBattlePeers
         guard !peers.isEmpty else {
+            if !canBattle {
+                return [RowSpec(title: "비숑은 대전을 하지 않아요", subtitle: "동물보호 차원에서 대전할 수 없어요 🐾", control: nil, dimmed: true)]
+            }
             return [RowSpec(title: "주변에 상대가 없어요", subtitle: "같은 Wi-Fi의 다른 ConnorPet을 찾는 중", control: nil, dimmed: true)]
         }
         var rows: [RowSpec] = []
@@ -440,13 +446,16 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             stack.orientation = .horizontal
             stack.spacing = 8
 
-            let challenge = makeButton(title: "신청", action: #selector(challengePressed(_:)))
-            challenge.tag = i
+            // 대전을 안 하는 펫(흰 비숑)이면 신청 버튼은 빼고 노려보기만 남긴다.
+            if canBattle {
+                let challenge = makeButton(title: "신청", action: #selector(challengePressed(_:)))
+                challenge.tag = i
+                stack.addArrangedSubview(challenge)
+            }
             let stare = makeButton(title: "노려보기", action: #selector(starePressed(_:)))
             stare.tag = i
             peerButtonMap[i] = peer.id
 
-            stack.addArrangedSubview(challenge)
             stack.addArrangedSubview(stare)
             stack.layoutSubtreeIfNeeded()
             stack.frame = NSRect(origin: .zero, size: stack.fittingSize)
