@@ -32,6 +32,8 @@ Orca 또는 Claude Code의 프로젝트/에이전트 상태에 반응하는 데�
 - `scripts/simulate_agent.py` — 실제 에이전트 없이 `last-status.json`에 가짜 상태 주입 (Orca 소스 전용)
 - `scripts/install_claude_hooks.py` — 위 훅 핸들러를 `~/.claude/settings.json`에 병합/제거(`--uninstall`)하는 설치 스크립트. 기존 훅(matcher 걸린 것 포함) 안 건드리고, 재실행해도 중복 안 됨
 - `scripts/pet_hook_status.py` — Claude Code 훅 핸들러 (선택 설치, README "Claude Code 훅으로 헤롱헤롱/실패까지 보기" 참고). Stop/SessionEnd에서만 돌며 `~/.claude/pet-status.json`에 done/failed/remove만 기록(달리기·얼음은 세션파일이 담당). `~/.claude/settings.json`은 전역 설정이라 **사용자 명시적 동의 없이 이 저장소가 대신 실행하지 않는다** — 스크립트/README/메뉴바 버튼으로 안내만 하고, 사용자가 직접 돌리거나(스크립트) 메뉴에서 명시적으로 눌러야(인앱) 실행. 이 파일의 사본이 `ConnorPet/Sources/ConnorPet/Resources/hooks/pet_hook_status.py`에도 있다(아래 동기화 규칙 참고)
+- `install.sh` — 최종 사용자용 원라이너 설치기(`curl … | bash`). 최신 릴리스 `pet.dmg` 를 받아 마운트 → `/Applications` 로 복사 → `com.apple.quarantine` 제거(미서명 배포라 필수) → 실행. 이미 있으면 실행 중인 `pet` 을 종료 후 교체(업데이트 겸용). README 맨 위 "설치"가 이걸 안내
+- `pet-egg/homebrew-pet`(별도 레포) — Homebrew 탭. `brew install --cask pet-egg/pet/pet`. `Casks/pet.rb` 의 `version`/`sha256` 은 릴리스 워크플로의 `bump-cask` 잡이 태그마다 `sed` 로 자동 갱신(그 잡은 탭에 write 하는 PAT `HOMEBREW_TAP_TOKEN` 시크릿이 있을 때만 동작, 없으면 조용히 건너뜀). Cask 는 설치 시 quarantine 을 자동 제거
 - `preview/index.html` — 브라우저 전용 미리보기 (Orca 설치 불필요)
 - `.github/workflows/build-pet-dmg.yml` — `swift run`과 동일하게 **전체 펫**이 든 단일 앱을 `pet.app`/`pet.dmg`(실행 파일명도 `pet`)로 빌드하는 CI 파이프라인. 펫을 고르거나 소스를 패치하지 않고 기본 빌드를 그대로 배포한다. Sparkle 임베드 + git 버전 주입 + (Secret 있으면) 서명된 `appcast.xml` 생성. **트리거**: `v*` **태그 푸시**만 → 빌드 후 `release` 잡이 릴리스 생성 + `pet.dmg` 업로드(다운로드 URL `releases/latest/download/pet.dmg`), `publish-appcast` 잡이 `appcast.xml` 을 GitHub Pages(소스=GitHub Actions)로 배포 → 자동 업데이트 발행 완결. 수동(`workflow_dispatch`) 트리거는 제거됨 — 태그 푸시 자동 배포만 쓴다. 릴리스에는 `SPARKLE_EDDSA_PRIVATE_KEY` 시크릿 필수
 

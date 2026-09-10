@@ -6,6 +6,24 @@
 
 ![펫 목록](docs/pet-gallery.png)
 
+## 설치
+
+macOS 에서 아래 한 줄이면 됩니다 — 최신 `pet.dmg` 를 받아 `/Applications` 에 설치하고, quarantine 플래그까지 벗긴 뒤 바로 실행합니다 (이미 깔려 있으면 업데이트로 교체):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/pet-egg/pet/main/install.sh | bash
+```
+
+Homebrew 를 쓴다면 (같은 결과, `brew upgrade` 로 업데이트도 됨):
+
+```sh
+brew install --cask pet-egg/pet/pet
+```
+
+> 서명·공증을 하지 않은 배포본이라, 그냥 더블클릭하면 macOS 가 "손상되었기 때문에 열 수 없음"이라며 앱을 휴지통으로 보내버립니다. 위 스크립트/Cask 가 대신 `xattr` 로 quarantine 을 제거해 이 관문을 넘겨줍니다. 손으로 설치하고 싶으면 아래 **"dmg로 빌드해서 배포하기"** 의 수동 절차를 참고하세요.
+
+---
+
 ## 어떻게 가능한가
 
 메뉴바 아이콘에서 상태 소스를 **Claude Desktop**(기본값), **Claude Code**, 또는 **Orca** 중 고를 수 있습니다. 모두 `AgentStatusWatching` 프로토콜을 구현한 워처가 폴링해서 최종 애니메이션을 뽑아냅니다. Claude Code/Orca 소스는 같은 우선순위 로직(`PetAnimationState.swift`의 `agentStateAnimation`, Orca의 `pet-agent-state.ts` 포팅)을 공유합니다:
@@ -474,7 +492,9 @@ swift run
 
 코드서명/공증(notarization)은 하지 않고 ad-hoc 서명만 합니다(`codesign --sign -`). 서명 없이 그대로 두면 손으로 조립한 `.app` 번들이 quarantine 플래그와 맞물려 macOS가 "손상되었기 때문에 열 수 없음"이라며 실행을 거부하는 문제가 있어서, 최소한의 ad-hoc 서명으로 이를 막았습니다.
 
-**다운로드 후 반드시 quarantine을 직접 벗겨줘야 열립니다.** Apple Developer ID 서명이 아니라서 "확인되지 않은 개발자" 경고 정도로 끝나지 않고, 다운로드한 파일(quarantine 플래그가 붙음)을 그대로 더블클릭하면 macOS(특히 Apple Silicon)의 `amfid`가 "adhoc signed or signed by an unknown certificate chain"이라며 실행 자체를 막고 **아무 대화상자도 띄우지 않은 채 앱을 곧장 휴지통으로 옮겨버립니다** — 우클릭 → 열기로도 우회되지 않습니다(실제로 재현해서 확인한 동작입니다). 아래처럼 터미널에서 quarantine을 지운 뒤 열어야 합니다:
+**다운로드 후 반드시 quarantine을 직접 벗겨줘야 열립니다.** Apple Developer ID 서명이 아니라서 "확인되지 않은 개발자" 경고 정도로 끝나지 않고, 다운로드한 파일(quarantine 플래그가 붙음)을 그대로 더블클릭하면 macOS(특히 Apple Silicon)의 `amfid`가 "adhoc signed or signed by an unknown certificate chain"이라며 실행 자체를 막고 **아무 대화상자도 띄우지 않은 채 앱을 곧장 휴지통으로 옮겨버립니다** — 우클릭 → 열기로도 우회되지 않습니다(실제로 재현해서 확인한 동작입니다).
+
+맨 위 **"설치"** 의 원라이너(`install.sh`)/Homebrew Cask 가 바로 이 과정을 대신 해주므로 보통은 그걸 쓰면 됩니다. 손으로 하려면 아래처럼 터미널에서 quarantine을 지운 뒤 열어야 합니다:
 
 ```sh
 # dmg를 마운트해서 pet.app을 Applications(또는 원하는 위치)로 옮긴 다음:
@@ -520,6 +540,12 @@ git push origin v1.0.0
 → 기존 사용자 앱이 다음 실행 때 새 버전을 감지합니다. (배포는 `v*` 태그 푸시로만 트리거됩니다 — 수동 `workflow_dispatch` 트리거는 제거됐습니다.)
 
 > 릴리스에는 서명 키가 필수입니다 — Secret 이 없으면 `appcast.xml` 이 생성되지 않아 `publish-appcast` 잡이 실패합니다(빌드/릴리스 자체는 되지만 자동 업데이트 피드는 안 올라감).
+
+### Homebrew Cask 자동 갱신 (`bump-cask` 잡)
+
+`brew install --cask pet-egg/pet/pet` 은 별도 탭 저장소 **[`pet-egg/homebrew-pet`](https://github.com/pet-egg/homebrew-pet)** 의 `Casks/pet.rb` 를 씁니다. 릴리스 워크플로의 `bump-cask` 잡이 새 태그마다 이 파일의 `version`/`sha256` 을 자동으로 갱신하므로, 태그만 밀면 curl 스크립트와 Homebrew 가 함께 최신이 됩니다.
+
+이 잡은 **다른 저장소(탭)에 push** 해야 해서 기본 `github.token` 으론 안 되고, 탭에 write 권한이 있는 PAT 를 저장소 Secret **`HOMEBREW_TAP_TOKEN`** 에 넣어 두면 동작합니다(**최초 1회만**). Secret 이 없으면 잡이 조용히 건너뛰므로(릴리스는 정상), Homebrew 배포를 안 쓸 거면 설정하지 않아도 됩니다. 탭의 `url`/`zap` 등 나머지는 잡이 `sed` 로 두 줄만 바꾸고 그대로 두므로, 구조를 바꾸려면 탭 저장소의 `Casks/pet.rb` 를 직접 고치면 됩니다.
 
 ## 클릭하면 브리핑
 
