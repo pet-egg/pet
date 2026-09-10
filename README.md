@@ -11,8 +11,10 @@
 macOS 에서 아래 한 줄이면 됩니다 — 최신 `pet.dmg` 를 받아 `/Applications` 에 설치하고, quarantine 플래그까지 벗긴 뒤 바로 실행합니다 (이미 깔려 있으면 업데이트로 교체):
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/pet-egg/pet/main/install.sh | bash
+curl -fsSL "https://raw.githubusercontent.com/pet-egg/pet/main/install.sh?$(date +%s)" | bash
 ```
+
+> `?$(date +%s)` 는 raw.githubusercontent.com 의 ~5분 캐시를 우회해 항상 최신 `install.sh` 를 받기 위한 것입니다.
 
 Homebrew 를 쓴다면 (같은 결과, `brew upgrade` 로 업데이트도 됨):
 
