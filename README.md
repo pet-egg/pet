@@ -146,6 +146,14 @@ CLI와 달리 상태를 파일로 남기지 않고(대화 상태는 Electron 메
 계속 동작합니다. `시스템 설정 › 개인정보 보호 및 보안 › 손쉬운 사용`에서 `ConnorPet`을 켜면 재실행
 없이 바로 반영됩니다.
 
+> **업데이트 후 손쉬운 사용이 켜져 있는데도 안 먹을 때**: 이 앱은 ad-hoc 서명(Developer ID 없음)이라
+> 빌드마다 코드서명 해시(cdhash)가 달라집니다. macOS TCC는 손쉬운 사용 권한을 이 해시에 묶어 두므로,
+> Sparkle로 업데이트되면 예전 권한이 새 바이너리와 안 맞아 `AXIsProcessTrusted()`가 false가 되는데도
+> 설정의 토글은 **켜진 채로 보이고** 시스템은 다시 묻지도 않습니다(펫이 Claude Desktop에 반응을 멈춤).
+> 그래서 워처가 켜질 때 **버전이 바뀌었는데 인증이 안 된 상태**면 `tccutil reset Accessibility`로 낡은
+> 권한 기록을 지워 시스템 권한 요청이 다시 뜨게 합니다 — 손쉬운 사용 목록에서 수동으로 껐다 켤 필요
+> 없이 한 번에 재승인하면 됩니다(정상 동작하는 권한은 절대 건드리지 않음). 구현: `ClaudeAXProbe.reconcileAccessibilityGrant()`.
+
 **신호 2 — "끝났나" (알림센터 DB, `NotificationCenterDB.swift`)**: Claude 앱이 완료 시 띄우는 macOS
 알림(설정 → 알림에서 켜야 함)을 `$DARWIN_USER_DIR/com.apple.notificationcenter/db2/db`(SQLite)에서
 읽습니다. `com.anthropic.claudefordesktop` 앱의 새 레코드가 뜨면 "완료"로 봅니다. 실측상 **짧은
