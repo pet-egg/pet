@@ -1250,19 +1250,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
 
-        // 펫 선택지(썸네일 = idle 첫 프레임)를 메뉴와 같은 순서로 만든다.
-        let pets: [FirstRunWizard.PetOption] = Self.availablePetSlugs.compactMap { slug in
-            guard let name = petDisplayNames[slug] else { return nil }
-            let image = (try? Self.loadSpriteSheet(slug: slug))?
-                .resolvedAnimation(for: .idle)?.images.first
-            return FirstRunWizard.PetOption(slug: slug, name: name, image: image)
+        // 펫 선택지(썸네일 = idle 첫 프레임)를 대분류(포켓몬/동물/메이플스토리)별로
+        // 묶는다 — 설정 창 펫 팝업과 같은 그룹 구성. 빈 카테고리도 넘겨 "준비 중"으로 뜬다.
+        let petGroups: [FirstRunWizard.PetGroup] = Self.PetCategory.allCases.map { cat in
+            let opts: [FirstRunWizard.PetOption] = Self.availablePetSlugs
+                .filter { Self.category(of: $0) == cat }
+                .compactMap { slug in
+                    guard let name = petDisplayNames[slug] else { return nil }
+                    let image = (try? Self.loadSpriteSheet(slug: slug))?
+                        .resolvedAnimation(for: .idle)?.images.first
+                    return FirstRunWizard.PetOption(slug: slug, name: name, image: image)
+                }
+            return FirstRunWizard.PetGroup(category: cat.displayName, pets: opts)
         }
         let sources = Self.availableStatusSources.map {
             FirstRunWizard.SourceOption(id: $0, name: Self.statusSourceDisplayNames[$0] ?? $0,
                                         icon: Self.sourceIcon($0))
         }
 
-        let result = FirstRunWizard.run(pets: pets, sources: sources)
+        let result = FirstRunWizard.run(petGroups: petGroups, sources: sources)
         if let slug = result.petSlug, petDisplayNames[slug] != nil {
             selectedPetSlug = slug
             Self.savePetSlug(slug)
