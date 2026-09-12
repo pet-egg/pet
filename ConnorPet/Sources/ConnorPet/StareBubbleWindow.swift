@@ -143,12 +143,14 @@ private final class StareBubbleView: NSView {
         var x = Self.padding.left
         let contentH = body.height - Self.padding.top - Self.padding.bottom
 
-        // 펫 도트. 픽셀 아트라 보간을 끄고(nearest) 또렷하게 그린다.
+        // 펫 도트. 픽셀 아트라 보간을 끄고(nearest) 또렷하게 그린다. 이 뷰는 flipped
+        // (좌상단 원점)라, NSImage 를 그냥 그리면 위아래가 뒤집힌다 — `respectFlipped:
+        // true` 로 대상 뷰의 flip 을 존중해 바로 서게 그린다.
         if let dot {
             let dotRect = NSRect(x: x, y: (body.height - Self.dotSide) / 2,
                                  width: Self.dotSide, height: Self.dotSide)
-            NSGraphicsContext.current?.imageInterpolation = .none
-            dot.draw(in: dotRect, from: .zero, operation: .sourceOver, fraction: 1.0)
+            dot.draw(in: dotRect, from: .zero, operation: .sourceOver, fraction: 1.0,
+                     respectFlipped: true, hints: [.interpolation: NSImageInterpolation.none])
             x += Self.dotSide + Self.dotGap
         }
 
