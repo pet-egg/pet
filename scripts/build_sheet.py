@@ -664,13 +664,14 @@ def draw_question_bubble(frame, t):
 
 
 def _paw_print(draw, cx, cy, s, a, color):
-    """발자국 하나(위에서 본 젤리 모양) — 발바닥 패드 + 발가락 젤리 4개."""
+    """발자국 하나(위에서 본 젤리 모양). **발가락이 왼쪽(진행 방향)을 향한다** —
+    펫이 왼쪽으로 달리므로. 뒤꿈치 패드는 오른쪽, 발가락 젤리 4개는 왼쪽으로 부채꼴."""
     r, g, b = color
     col = (r, g, b, max(0, min(255, int(a))))
-    draw.ellipse([cx - 2.3 * s, cy - 0.2 * s, cx + 2.3 * s, cy + 2.6 * s], fill=col)  # 발바닥 패드
-    for tx, ty, tr in [(-1.9, -1.7, 0.95), (-0.65, -2.7, 0.9), (0.65, -2.7, 0.9), (1.9, -1.7, 0.95)]:
+    draw.ellipse([cx - 0.6 * s, cy - 1.9 * s, cx + 2.4 * s, cy + 1.9 * s], fill=col)  # 뒤꿈치 패드(오른쪽)
+    for tx, ty, tr in [(-1.8, -1.9, 0.85), (-2.8, -0.7, 0.8), (-2.8, 0.7, 0.8), (-1.8, 1.9, 0.85)]:
         draw.ellipse([cx + tx * s - tr * s, cy + ty * s - tr * s,
-                      cx + tx * s + tr * s, cy + ty * s + tr * s], fill=col)          # 발가락 젤리
+                      cx + tx * s + tr * s, cy + ty * s + tr * s], fill=col)          # 발가락 젤리(왼쪽 부채꼴)
 
 
 def paw_print_layer(size, t):
