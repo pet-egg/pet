@@ -320,8 +320,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         // 디버그 전용: 노려보기 말풍선(펫 도트 + 문구)을 PNG 로 떠서 확인하고 종료한다.
+        // 말풍선 도트는 **노려본 상대의 펫**이므로, 내 펫이 아니라 상대 펫 slug 를
+        // 쓴다(CONNORPET_STARE_FROM 으로 지정, 없으면 내 펫으로 대체).
         if let path = ProcessInfo.processInfo.environment["CONNORPET_DEBUG_STARE"] {
-            presentStare(fromName: "연습상대", fromPet: selectedPetSlug)
+            let fromPet = ProcessInfo.processInfo.environment["CONNORPET_STARE_FROM"] ?? selectedPetSlug
+            presentStare(fromName: "연습상대", fromPet: fromPet)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
                 if let view = self?.stareBubble?.contentView,
                    let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
