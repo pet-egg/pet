@@ -83,7 +83,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // (see scripts/build_sheet.py's PETS list, which is the source of truth for
     // this set). Display names shown in the menu come from each pet's own
     // manifest rather than being duplicated here.
-    private static let availablePetSlugs = ["totodile", "ditto", "charmander", "squirtle", "geodude", "eevee", "chikorita", "torchic", "togepi", "tepig", "snorlax", "gengar", "diglett"]
+    private static let availablePetSlugs = ["totodile", "ditto", "charmander", "squirtle", "geodude", "eevee", "chikorita", "torchic", "togepi", "tepig", "snorlax", "gengar", "diglett", "pikachu"]
 
     /// 번들에 들어 있는 **모든** 펫 slug — 메뉴에 안 뜨는 진화형까지. 상대가 진화한
     /// 펫으로 노려볼 수 있으므로 초상 검증은 이 목록 전체를 봐야 한다.
@@ -128,6 +128,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         "torchic": ["combusken", "blaziken"],
         "eevee": ["vaporeon"],
         "diglett": ["dugtrio"],
+        "pikachu": ["raichu"],
         "ditto": [],
         "togepi": [],
         "snorlax": [],

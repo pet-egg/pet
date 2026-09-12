@@ -1,6 +1,6 @@
 # pet
 
-실제 [Orca](https://github.com/stablyai/orca), [Claude Code](https://claude.com/claude-code), 또는 [Claude 데스크톱 앱](https://claude.ai/download)의 프로젝트/에이전트 상태에 반응하는 데스크톱 펫 — 리아코 (Totodile), 메타몽 (Ditto), 파이리 (Charmander), 꼬부기 (Squirtle), 꼬마돌 (Geodude), 이브이 (Eevee), 치코리타 (Chikorita), 아차모 (Torchic), 토게피 (Togepi), 뚜꾸리 (Tepig), 잠만보 (Snorlax), 팬텀 (Gengar) 중 메뉴바 아이콘에서 언제든 전환 가능합니다. Orca에 임포트하는 `.codex-pet` 번들이 아니라, **완전히 별개의 macOS 앱**으로 만들었습니다. Orca/Claude Code/Claude 앱과 다른 프로세스로 떠 있으면서, 바깥에서 그 상태를 읽어옵니다. 여기에 더해, 같은 Wi-Fi에서 앱을 켜둔 사람끼리 **디지몬 다마고치 스타일 1:1 대전**도 할 수 있습니다 (아래 "같은 wifi에서 대전하기" 참고).
+실제 [Orca](https://github.com/stablyai/orca), [Claude Code](https://claude.com/claude-code), 또는 [Claude 데스크톱 앱](https://claude.ai/download)의 프로젝트/에이전트 상태에 반응하는 데스크톱 펫 — 리아코 (Totodile), 메타몽 (Ditto), 파이리 (Charmander), 꼬부기 (Squirtle), 꼬마돌 (Geodude), 이브이 (Eevee), 치코리타 (Chikorita), 아차모 (Torchic), 토게피 (Togepi), 뚜꾸리 (Tepig), 잠만보 (Snorlax), 팬텀 (Gengar), 디그다 (Diglett), 피카츄 (Pikachu) 중 메뉴바 아이콘에서 언제든 전환 가능합니다. Orca에 임포트하는 `.codex-pet` 번들이 아니라, **완전히 별개의 macOS 앱**으로 만들었습니다. Orca/Claude Code/Claude 앱과 다른 프로세스로 떠 있으면서, 바깥에서 그 상태를 읽어옵니다. 여기에 더해, 같은 Wi-Fi에서 앱을 켜둔 사람끼리 **디지몬 다마고치 스타일 1:1 대전**도 할 수 있습니다 (아래 "같은 wifi에서 대전하기" 참고).
 
 에이전트의 **실제 토큰 사용량**을 읽어와 펫 아래에 경험치(XP) 바로 보여주고, 경험치가 쌓이면 펫이 **진화**합니다 (리아코→크로콘→장크로다일 등). 자세한 내용은 아래 "토큰 사용량 경험치 바 & 진화" 참고.
 
@@ -356,7 +356,7 @@ Claude Code는 세션마다 전체 대화 기록을 `~/.claude/projects/<cwd-slu
 - 진화 지점은 **비율이 아니라 실제 토큰 수**로 고정돼 있습니다 (`XPModel.stageTokens`) — **2억 토큰**에서 1단계, **5억 토큰**에서 2단계. 바가 가득 차는 기준(`maxTokens`)은 마지막 진화 지점과 같아서, 바가 꽉 차는 순간이 최종 진화 시점입니다.
 
   예전에는 "바 만렙 100만 토큰의 10%/30%" 였는데, 실측 하루 사용량이 (입력+출력+캐시생성 기준) 1,500만이라 앱을 켜자마자 바가 가득 차고 **1단계를 건너뛰어 곧장 2단계로** 갔습니다. 1단계 진화형을 볼 수가 없었습니다. 지금 기준이면 1단계까지 약 2주, 2단계까지 약 5주입니다.
-- 진화 체인은 다음 도감 번호를 그대로 씁니다(메타몽·토게피·잠만보·팬텀은 진화 없음, 이브이는 데모용으로 샤미드 1단계만):
+- 진화 체인은 다음 도감 번호를 그대로 씁니다(메타몽·토게피·잠만보·팬텀은 진화 없음, 이브이·디그다·피카츄는 1단계만):
 
   | 기본 | 1단계 | 2단계 |
   |---|---|---|
@@ -367,6 +367,8 @@ Claude Code는 세션마다 전체 대화 기록을 `~/.claude/projects/<cwd-slu
   | 치코리타 (Chikorita) | 베이리프 (Bayleef) | 메가니움 (Meganium) |
   | 아차모 (Torchic) | 영뿔 (Combusken) | 번치코 (Blaziken) |
   | 이브이 (Eevee) | 샤미드 (Vaporeon) | — |
+  | 디그다 (Diglett) | 닥트리오 (Dugtrio) | — |
+  | 피카츄 (Pikachu) | 라이츄 (Raichu) | — |
   | 메타몽 (Ditto) | — | — |
   | 토게피 (Togepi) | — | — |
   | 뚜꾸리 (Tepig) | — | — |
@@ -395,6 +397,8 @@ togepi.codex-pet/        토게피(Togepi) Orca 임포트용 번들 — 위와 �
 tepig.codex-pet/         뚜꾸리(Tepig) Orca 임포트용 번들 — 위와 동일한 구조
 snorlax.codex-pet/       잠만보(Snorlax) Orca 임포트용 번들 — 위와 동일한 구조
 gengar.codex-pet/        팬텀(Gengar) Orca 임포트용 번들 — 위와 동일한 구조
+diglett.codex-pet/       디그다(Diglett) Orca 임포트용 번들 — 위와 동일한 구조
+pikachu.codex-pet/       피카츄(Pikachu) Orca 임포트용 번들 — 위와 동일한 구조
 
 scripts/build_sheet.py   재현 가능한 생성 스크립트 — `PETS` 리스트에 등록된 각 포켓몬마다
                           PokeAPI의 5세대 배틀 스프라이트를 받아서 `<slug>.codex-pet/`과
@@ -449,10 +453,12 @@ ConnorPet/                 진짜 결과물: 독립 실행형 macOS 앱
     FlameWindow.swift               속성기 이펙트 전용 투명 창 (클릭 통과)
     AppDelegate.swift              전체 연결 + 메뉴바 포켓몬/소스 선택·경험치 바 토글·대전·Quit 메뉴 + 진화 스프라이트 교체
     Resources/effects/              속성기·Zzz 이펙트 스프라이트 (fire_jet, water_jet, zzz)
-    Resources/pets/<slug>/          펫별 spritesheet.png + pet.json 번들 사본. 기본 12종(totodile, ditto,
-                                     charmander, squirtle, geodude, eevee, chikorita, torchic, togepi, tepig, snorlax, gengar)
-                                     + 진화형 13종 (croconaw, feraligatr, charmeleon, charizard, wartortle,
-                                     blastoise, graveler, golem, bayleef, meganium, combusken, blaziken, vaporeon)
+    Resources/pets/<slug>/          펫별 spritesheet.png + pet.json 번들 사본. 기본 14종(totodile, ditto,
+                                     charmander, squirtle, geodude, eevee, chikorita, torchic, togepi, tepig,
+                                     snorlax, gengar, diglett, pikachu)
+                                     + 진화형 14종 (croconaw, feraligatr, charmeleon, charizard, wartortle,
+                                     blastoise, graveler, golem, bayleef, meganium, combusken, blaziken, vaporeon,
+                                     dugtrio, raichu)
 ```
 
 ## 실행 방법
@@ -728,7 +734,7 @@ CONNORPET_DEBUG=1 swift run
 
 ## Orca 안에서 직접 쓰고 싶다면
 
-Orca 자체 펫으로 쓰고 싶으면(Settings → Experimental → Pet → Import), 원하는 펫의 `<slug>.codex-pet/` 폴더(`totodile`/`ditto`/`charmander`/`squirtle`/`geodude`/`eevee`/`chikorita`/`torchic`/`togepi`/`tepig`/`togepi`)를 그대로 임포터에 지정하면 됩니다.
+Orca 자체 펫으로 쓰고 싶으면(Settings → Experimental → Pet → Import), 원하는 펫의 `<slug>.codex-pet/` 폴더(`totodile`/`ditto`/`charmander`/`squirtle`/`geodude`/`eevee`/`chikorita`/`torchic`/`togepi`/`tepig`/`snorlax`/`gengar`/`diglett`/`pikachu`)를 그대로 임포터에 지정하면 됩니다.
 
 ## 스프라이트 시트 다시 만들기
 
@@ -760,9 +766,9 @@ python3 scripts/build_sheet.py
 받을 수 있는 게 아니고 생성형 이미지라 스크립트를 다시 돌려도 똑같이 나오지 않기
 때문입니다. 파일이 없으면 그 연출만 건너뛰고 빌드는 통과합니다.
 
-`scripts/build_sheet.py`의 `PETS` 리스트에 등록된 각 포켓몬(현재 리아코 #158, 메타몽 #132, 파이리 #4, 꼬부기 #7, 꼬마돌 #74, 이브이 #133, 치코리타 #152, 아차모 #255)마다 PokeAPI에서 5세대 애니메이션 배틀 스프라이트를 다시 받아서 `<slug>.codex-pet/{spritesheet.png,pet.json}`과 `ConnorPet/Sources/ConnorPet/Resources/pets/<slug>/`의 앱 번들 사본을 동시에 처음부터 재생성합니다 — 완전히 재현 가능하고, 바이너리 원본 에셋은 저장소에 커밋하지 않습니다. 새 포켓몬을 펫 선택 메뉴에 추가하려면 `PETS`에 항목을 하나 더 넣고 스크립트를 다시 돌린 뒤, `AppDelegate.swift`의 `availablePetSlugs`에 슬러그를 추가하면 됩니다.
+`scripts/build_sheet.py`의 `PETS` 리스트에 등록된 각 포켓몬(현재 리아코 #158, 메타몽 #132, 파이리 #4, 꼬부기 #7, 꼬마돌 #74, 이브이 #133, 치코리타 #152, 아차모 #255, 토게피 #175, 뚜꾸리 #498, 잠만보 #143, 팬텀 #94, 디그다 #50, 피카츄 #25)마다 PokeAPI에서 5세대 애니메이션 배틀 스프라이트를 다시 받아서 `<slug>.codex-pet/{spritesheet.png,pet.json}`과 `ConnorPet/Sources/ConnorPet/Resources/pets/<slug>/`의 앱 번들 사본을 동시에 처음부터 재생성합니다 — 완전히 재현 가능하고, 바이너리 원본 에셋은 저장소에 커밋하지 않습니다. 새 포켓몬을 펫 선택 메뉴에 추가하려면 `PETS`에 항목을 하나 더 넣고 스크립트를 다시 돌린 뒤, `AppDelegate.swift`의 `availablePetSlugs`에 슬러그를 추가하면 됩니다.
 
-`scripts/build_sheet.py`의 `PETS` 리스트에 등록된 각 기본 포켓몬(현재 리아코 #158, 메타몽 #132, 파이리 #4, 꼬부기 #7, 꼬마돌 #74, 이브이 #133, 치코리타 #152, 아차모 #255, 토게피 #175, 뚜꾸리 #498, 잠만보 #143, 팬텀 #94)과 `_EVOLUTIONS`의 진화형(크로콘 #159, 장크로다일 #160, 리자드 #5, 리자몽 #6, 어니부기 #8, 거북왕 #9, 데구리 #75, 딱구리 #76, 베이리프 #153, 메가니움 #154, 영뿔 #256, 번치코 #257, 샤미드 #134)마다 PokeAPI에서 5세대 애니메이션 배틀 스프라이트를 다시 받아서 `ConnorPet/Sources/ConnorPet/Resources/pets/<slug>/`의 앱 번들 사본을(기본 펫은 추가로 `<slug>.codex-pet/`까지) 처음부터 재생성합니다 — 완전히 재현 가능하고, 바이너리 원본 에셋은 캐시에 받아둘 뿐 저장소에 원본을 커밋하지 않습니다. 새 포켓몬을 펫 선택 메뉴에 추가하려면 `PETS`에 항목을 하나 더 넣고 스크립트를 다시 돌린 뒤, `AppDelegate.swift`의 `availablePetSlugs`에 슬러그를 추가하면 됩니다. 진화형을 바꾸려면 `_EVOLUTIONS`와 `AppDelegate.evolutionChains`를 함께 수정하세요.
+`scripts/build_sheet.py`의 `PETS` 리스트에 등록된 각 기본 포켓몬(현재 리아코 #158, 메타몽 #132, 파이리 #4, 꼬부기 #7, 꼬마돌 #74, 이브이 #133, 치코리타 #152, 아차모 #255, 토게피 #175, 뚜꾸리 #498, 잠만보 #143, 팬텀 #94, 디그다 #50, 피카츄 #25)과 `_EVOLUTIONS`의 진화형(크로콘 #159, 장크로다일 #160, 리자드 #5, 리자몽 #6, 어니부기 #8, 거북왕 #9, 데구리 #75, 딱구리 #76, 베이리프 #153, 메가니움 #154, 영뿔 #256, 번치코 #257, 샤미드 #134, 닥트리오 #51, 라이츄 #26)마다 PokeAPI에서 5세대 애니메이션 배틀 스프라이트를 다시 받아서 `ConnorPet/Sources/ConnorPet/Resources/pets/<slug>/`의 앱 번들 사본을(기본 펫은 추가로 `<slug>.codex-pet/`까지) 처음부터 재생성합니다 — 완전히 재현 가능하고, 바이너리 원본 에셋은 캐시에 받아둘 뿐 저장소에 원본을 커밋하지 않습니다. 새 포켓몬을 펫 선택 메뉴에 추가하려면 `PETS`에 항목을 하나 더 넣고 스크립트를 다시 돌린 뒤, `AppDelegate.swift`의 `availablePetSlugs`에 슬러그를 추가하면 됩니다. 진화형을 바꾸려면 `_EVOLUTIONS`와 `AppDelegate.evolutionChains`를 함께 수정하세요.
 
 ## 앱 아이콘
 
