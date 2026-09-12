@@ -16,6 +16,7 @@ import json
 import math
 import os
 import urllib.request
+import xml.etree.ElementTree as ET
 
 from PIL import Image, ImageDraw, ImageEnhance, ImageFont
 
@@ -114,20 +115,8 @@ SKILLS = {
 }
 EXTRA_ROWS = {slug: [cfg["row"]] for slug, cfg in SKILLS.items()}
 
-# 네 발로 엎드려 종종거리며 달리는 펫. "하찮은 피카츄" 밈(YouTube Short)의 달리기를
-# 참고했다 — 몸을 바닥에 바짝 붙여 통통하고 낮게 웅크리고, 머리를 앞으로 숙인 채
-# 빠르게 종종거리며(상하 바운스 2번/좌우 흔들) 질주한다. 달리기 계열 행(running·
-# running-left·running-right)에만 적용하고, 다른 행(잠듦·얼음·헤롱헤롱 등)은 선 포즈
-# 그대로 둔다. 원본은 두 발로 선 정면(왼쪽 보기) 스프라이트라, 완전한 네 발 다리
-# 움직임은 못 만들지만 낮은 웅크림+숙인 머리+빠른 바운스로 밈의 "낮게 종종대는 질주"
-# 실루엣을 재현한다.
-SCURRY_RUN = {"pikachu"}
-# 머리를 앞으로 숙이는 각도(도). 밈은 등~머리 척추각이 30~40도쯤이라 그 정도만 숙인다
-# (예전 66도는 옆으로 누운 것처럼 보였다).
-SCURRY_ANGLE = 32
-# 종종거림은 아주 빠르다. 달리기 계열 행의 프레임당 지속시간을 기본(120~180ms)보다
-# 훨씬 짧게 덮어써 밈처럼 프레임을 촤라락 넘긴다.
-SCURRY_FRAME_MS = 70
+# 피카츄만 gen5 대신 PMD 스프라이트를 쓴다(방향별 워크 사이클이 있어 진짜 걷기/
+# 달리기가 나온다) — build_pikachu_pmd/ build_pet 참고.
 
 EFFECTS_DIR = os.path.join(HERE, "effects")
 # 불길 끝과 프레임 왼쪽 변 사이에 남길 여백. 0 이면 변에 닿아 잘린 것처럼 보인다.
@@ -508,30 +497,6 @@ def flip(img):
     return img.transpose(Image.FLIP_LEFT_RIGHT)
 
 
-def scurry_frame(sprite, t, angle):
-    """"하찮은 피카츄" 밈처럼 몸을 낮춰 종종거리는 질주 한 프레임(왼쪽 기준).
-
-    t 는 루프 위상 [0,1). 한 루프에 다리 박자 2번(gallop)을 넣는다:
-      - 스쿼시&스트레치: 착지 때 세로로 눌리고(통통·낮게) 도약 때 늘어난다.
-      - 상하 바운스: 박자마다 톡톡 튀어 오르는 빠른 바운스.
-      - 좌우 흔들(waddle): 몸을 좌우로 살짝 기울였다 펴며 종종대는 느낌.
-    거기에 머리를 angle 만큼 앞(왼쪽 아래)으로 숙여 낮게 웅크린 실루엣을 만든다.
-    running-right 는 이 프레임을 통째로 flip 해서 만들므로 머리가 오른쪽을 향한다.
-    """
-    phase = 2 * math.pi * t
-    squash = math.cos(2 * phase)                 # +1 눌림 / -1 늘어남 (박자 2번)
-    sx = 1.0 + 0.06 * squash
-    sy = 0.86 - 0.07 * squash
-    w0, h0 = sprite.size
-    body = sprite.resize((max(1, round(w0 * sx)), max(1, round(h0 * sy))), Image.NEAREST)
-    rock = 7 * math.sin(phase)                   # 좌우 흔들
-    leaned = body.rotate(angle + rock, resample=Image.NEAREST, expand=True)
-    bob = -abs(math.sin(phase)) * 9              # 박자마다 위로 톡 (음수=위)
-    dy = round(20 + bob)                          # +20: 바닥에 바짝 붙여 낮게
-    dx = round(5 * math.sin(phase))              # 좌우 사이드 스텝
-    return paste_centered(leaned, dx=dx, dy=dy)
-
-
 # Pokémon status-condition skins for the priority states from
 # PetAnimationState.swift: blocked/waiting -> Freeze, done -> Infatuation,
 # nothing -> Sleep. These layer a drawn overlay on top of the tinted sprite
@@ -653,7 +618,217 @@ def draw_zzz(frame, t):
     return Image.alpha_composite(frame, overlay)
 
 
+def compose_and_write(pet, rows, extra_manifest, row_order, frame):
+    """rows(행 이름→{frames,durations}) 를 스프라이트시트+매니페스트로 굽고
+    두 곳(있으면 .codex-pet, 항상 앱 리소스)에 쓴다. gen5 파이프라인과 피카츄
+    PMD 파이프라인이 공유한다 — 출력 포맷은 동일하다.
+
+    시트 폭은 항상 FRAME_DEFAULT*COLS 가 아니라 frame*COLS 다. 행별 프레임 수는
+    달라도 되고(매니페스트 frames 가 실제 개수를 담는다) 남는 칸은 투명이다.
+    """
+    sheet_w = frame * COLS
+    sheet_h = frame * len(row_order)
+    sheet = Image.new("RGBA", (sheet_w, sheet_h), (0, 0, 0, 0))
+
+    manifest_animations = {}
+    for row_idx, name in enumerate(row_order):
+        data = rows[name]
+        for col_idx, f in enumerate(data["frames"]):
+            sheet.alpha_composite(f, (col_idx * frame, row_idx * frame))
+        manifest_animations[name] = {
+            "row": row_idx,
+            "frames": len(data["frames"]),
+            "frameDurationsMs": data["durations"],
+        }
+
+    manifest = {
+        "id": pet["id"],
+        "displayName": pet["display_name"],
+        "description": pet["description"],
+        "spritesheetPath": "spritesheet.png",
+        "frame": {"width": frame, "height": frame},
+        "fps": 6,
+        "defaultAnimation": "idle",
+        "animations": manifest_animations,
+        **extra_manifest,
+    }
+
+    if pet.get("orca_bundle", True):
+        out_dir = os.path.join(REPO_ROOT, pet["out_dir_name"])
+        os.makedirs(out_dir, exist_ok=True)
+        sheet.save(os.path.join(out_dir, "spritesheet.png"), optimize=True)
+        with open(os.path.join(out_dir, "pet.json"), "w") as fp:
+            json.dump(manifest, fp, indent=2, ensure_ascii=False)
+
+    app_dir = os.path.join(APP_RESOURCES_DIR, pet["slug"])
+    os.makedirs(app_dir, exist_ok=True)
+    sheet.save(os.path.join(app_dir, "spritesheet.png"), optimize=True)
+    with open(os.path.join(app_dir, "pet.json"), "w") as fp:
+        json.dump(manifest, fp, indent=2, ensure_ascii=False)
+
+    print(f"wrote {app_dir}/ ({sheet.size[0]}x{sheet.size[1]})")
+
+
+# ── 피카츄 전용: PMD(Pokémon Mystery Dungeon) 도트 스프라이트 ──────────────────
+# 피카츄만 gen5 배틀 스프라이트(두 발로 선 정면 1장)를 안 쓰고, 방향별·다프레임
+# 워크 사이클이 있는 PMDCollab 스프라이트를 쓴다. gen5 를 아무리 굴려도 진짜
+# 걷기/달리기 사이클이 안 나와서(예전 회전·스쿼시 편법의 원인) 밈 같은 종종걸음을
+# 제대로 내려면 애초에 이동 애니메이션이 있는 소스가 필요하기 때문이다.
+#
+# 출처: PMDCollab/SpriteCollab 의 0025(피카츄). 원본은 Chunsoft 의 Pokémon
+# Mystery Dungeon 게임 스프라이트(= 이미 이 저장소가 쓰는 PokeAPI gen5 처럼
+# 공식 게임에서 추출한 도트). credits.txt 상 제작자 CHUNSOFT. README 에 출처 명시.
+PMD_BASE = "https://raw.githubusercontent.com/PMDCollab/SpriteCollab/master/sprite/0025"
+PMD_ANIMS = ["Walk", "Idle", "Sleep", "Hurt"]
+# 8방향 시트의 행 순서(PMD/SkyTemple 표준): 0=아래(정면),1=우하,2=오른쪽,3=우상,
+# 4=위(뒷모습),5=좌상,6=왼쪽,7=좌하.
+PMD_DIR = {"down": 0, "right": 2, "left": 6}
+PMD_SCALE = 5          # 캐릭터 최대 높이 31px → x5=155px, 200 프레임 안에 여백 두고 들어감
+PMD_FLOOR_Y = 180      # 발이 닿는 바닥선(프레임 내 y). 상태가 바뀌어도 발 위치 유지.
+
+
+def _pmd_meta():
+    """AnimData.xml 을 받아 anim 이름 → (frame_w, frame_h, [durations]) 로."""
+    xml_path = fetch(f"{PMD_BASE}/AnimData.xml", os.path.join(CACHE_DIR, "pmd_0025_AnimData.xml"))
+    root = ET.parse(xml_path).getroot()
+    meta = {}
+    for a in root.iter("Anim"):
+        name = a.findtext("Name")
+        if a.findtext("FrameWidth"):
+            meta[name] = (
+                int(a.findtext("FrameWidth")),
+                int(a.findtext("FrameHeight")),
+                [int(d.text) for d in a.findall("./Durations/Duration")],
+            )
+    return meta
+
+
+def _pmd_strip(name, direction, meta):
+    """(anim, 방향) 의 프레임 리스트와 원본 duration 리스트를 돌려준다."""
+    fw, fh, durs = meta[name]
+    path = fetch(f"{PMD_BASE}/{name}-Anim.png", os.path.join(CACHE_DIR, f"pmd_0025_{name}.png"))
+    sheet = Image.open(path).convert("RGBA")
+    d = PMD_DIR[direction]
+    cols = sheet.width // fw
+    top = d * fh
+    frames = [sheet.crop((c * fw, top, (c + 1) * fw, top + fh)) for c in range(cols)]
+    return frames, durs
+
+
+def _pmd_prep(frames):
+    """행 공통 bbox 로 잘라(프레임 간 상하 바운스 보존) 정수배 확대."""
+    box = union_bbox(frames)
+    cropped = [f.crop(box) if box else f for f in frames]
+    return [c.resize((c.width * PMD_SCALE, c.height * PMD_SCALE), Image.NEAREST) for c in cropped]
+
+
+def _pmd_place(sprite, dx=0):
+    """발을 PMD_FLOOR_Y 에 맞춰 가로 중앙에 놓는다(선 자세·걷기 발 위치 통일)."""
+    canvas = blank_canvas()
+    w, h = sprite.size
+    x = max(0, min(FRAME - w, (FRAME - w) // 2 + dx))
+    y = max(0, min(FRAME - h, PMD_FLOOR_Y - h))
+    canvas.alpha_composite(sprite, (x, y))
+    return canvas
+
+
+def _pmd_durs(durs, factor, floor=30):
+    return [max(floor, round(d * factor)) for d in durs]
+
+
+def build_pikachu_pmd(pet):
+    """피카츄를 PMD 스프라이트로 굽는다. gen5 파이프라인과 같은 9행 포맷으로
+    맞춰 앱은 다른 펫과 똑같이 읽는다. 상태 스킨(잠듦 Zzz·얼음·헤롱헤롱 하트·실패
+    빨강 떨림)은 공용 헬퍼를 그대로 재사용한다."""
+    global FRAME
+    FRAME = FRAME_DEFAULT
+    meta = _pmd_meta()
+
+    walk_r = _pmd_prep(_pmd_strip("Walk", "right", meta)[0])
+    walk_l = _pmd_prep(_pmd_strip("Walk", "left", meta)[0])
+    walk_d = _pmd_prep(_pmd_strip("Walk", "down", meta)[0])
+    idle_d = _pmd_prep(_pmd_strip("Idle", "down", meta)[0])
+    sleep_d = _pmd_prep(_pmd_strip("Sleep", "down", meta)[0])
+    hurt_d = _pmd_prep(_pmd_strip("Hurt", "down", meta)[0])
+    walk_durs = meta["Walk"][2]
+    idle_durs = meta["Idle"][2]
+
+    rows = {}
+
+    # idle == 아무 일 없음 → 잠듦 스킨: PMD Sleep 포즈(실제 자는 그림) + 채도↓ + Zzz.
+    idle_frames = []
+    for i in range(8):
+        base = sleep_d[(i // 4) % len(sleep_d)]
+        frame = _pmd_place(desaturate(base, 0.45, 0.7))
+        idle_frames.append(draw_zzz(frame, i / 8))
+    rows["idle"] = {"frames": idle_frames, "durations": [320] * 8}
+
+    # 좌우 드래그 = 방향별 워크 사이클(오른쪽=East, 왼쪽=West). 빠르게(밈 종종걸음).
+    rows["running-right"] = {"frames": [_pmd_place(s) for s in walk_r],
+                             "durations": _pmd_durs(walk_durs, 10)}
+    rows["running-left"] = {"frames": [_pmd_place(s) for s in walk_l],
+                            "durations": _pmd_durs(walk_durs, 10)}
+
+    # waving = 말하는 동안 → 정면 Idle(두리번).
+    rows["waving"] = {"frames": [_pmd_place(s) for s in idle_d],
+                      "durations": _pmd_durs(idle_durs, 8)}
+
+    # jumping = 서 있는 정면 포즈에 점프 아크를 합성(스쿼시&스트레치). PMD Hop 은
+    # 점프 궤적까지 프레임에 담겨 200px 을 넘겨서 안 쓰고, 크기 일관되게 직접 만든다.
+    stand = idle_d[0]
+    jump_frames = []
+    for i in range(10):
+        t = i / 10
+        arc = math.sin(math.pi * t)
+        s = stand
+        sc = 0.94 + 0.10 * arc
+        w, h = s.size
+        s = s.resize((max(1, round(w * sc)), max(1, round(h * sc))), Image.NEAREST)
+        canvas = blank_canvas()
+        cw, ch = s.size
+        x = max(0, min(FRAME - cw, (FRAME - cw) // 2))
+        y = max(0, min(FRAME - ch, PMD_FLOOR_Y - ch - round(46 * arc)))
+        canvas.alpha_composite(s, (x, y))
+        jump_frames.append(canvas)
+    rows["jumping"] = {"frames": jump_frames, "durations": [90] * 10}
+
+    # failed = 실패 → Hurt 포즈 빨강 틴트 + 좌우 떨림.
+    fail_frames = []
+    for i in range(6):
+        base = hurt_d[i % len(hurt_d)]
+        tinted = tint(base, (220, 40, 40), 0.45 if i % 2 == 0 else 0.2)
+        fail_frames.append(_pmd_place(tinted, dx=round(6 * math.sin(3 * math.pi * i / 6))))
+    rows["failed"] = {"frames": fail_frames, "durations": [120] * 6}
+
+    # waiting = blocked/승인대기 → 얼음. 정면 선 포즈 1장을 얼음 결정으로 감싼다.
+    icy = tint(desaturate(_pmd_place(idle_d[0]), 0.35, 1.1), (170, 215, 250), 0.6)
+    rows["waiting"] = {
+        "frames": [draw_ice_crystal(icy, shimmer=lerp_key([0.85, 1.0, 1.0, 0.85], i / 8))
+                   for i in range(8)],
+        "durations": [300] * 8,
+    }
+
+    # running(작업 중) = 정면 워크 사이클(밈처럼 카메라 쪽으로 다다다). 빠르게.
+    rows["running"] = {"frames": [_pmd_place(s) for s in walk_d],
+                       "durations": _pmd_durs(walk_durs, 10)}
+
+    # done → 헤롱헤롱: 정면 Idle 핑크 틴트 + 하트.
+    review_frames = []
+    for i in range(8):
+        t = i / 8
+        base = idle_d[i % len(idle_d)]
+        pulse = 0.5 - 0.5 * math.cos(2 * math.pi * t)
+        frame = _pmd_place(tint(base, (255, 140, 190), 0.15 + 0.35 * pulse))
+        review_frames.append(draw_hearts(frame, t))
+    rows["review"] = {"frames": review_frames, "durations": [220] * 8}
+
+    compose_and_write(pet, rows, {}, ROWS_ORDER, FRAME)
+
+
 def build_pet(pet):
+    if pet["slug"] == "pikachu":
+        build_pikachu_pmd(pet)
+        return
     global FRAME, SPRITE_TARGET
     FRAME = FRAME_BY_PET.get(pet["slug"], FRAME_DEFAULT)
     SPRITE_TARGET = SPRITE_TARGET_BY_PET.get(pet["slug"], SPRITE_TARGET_DEFAULT)
@@ -689,25 +864,17 @@ def build_pet(pet):
     # 왼쪽) **왼쪽을 보고 있다.** 그래서 뒤집지 않은 프레임이 running-left 이고,
     # 좌우 반전한 쪽이 running-right 다. 예전에는 이게 반대로 들어가 있어서
     # 오른쪽으로 드래그하면 펫이 왼쪽을 보고 끌려갔다.
-    scurry = pet["slug"] in SCURRY_RUN
     n, durs = spec("running-left")
-    if scurry:
-        durs = [SCURRY_FRAME_MS] * n
     run_left_frames = []
     for i, s in enumerate(sample(front_base, n)):
         t = i / n
-        if scurry:
-            run_left_frames.append(scurry_frame(s, t, SCURRY_ANGLE))
-        else:
-            run_left_frames.append(paste_centered(
-                s,
-                dx=round(14 * math.sin(2 * math.pi * t)),
-                dy=round(-4 - 4 * math.cos(4 * math.pi * t)),
-            ))
+        run_left_frames.append(paste_centered(
+            s,
+            dx=round(14 * math.sin(2 * math.pi * t)),
+            dy=round(-4 - 4 * math.cos(4 * math.pi * t)),
+        ))
     rows["running-left"] = {"frames": run_left_frames, "durations": durs}
     _, durs_right = spec("running-right")
-    if scurry:
-        durs_right = [SCURRY_FRAME_MS] * len(run_left_frames)
     rows["running-right"] = {"frames": [flip(f) for f in run_left_frames], "durations": durs_right}
 
     # waving 은 펫이 말하는 동안 재생된다. 예전에는 뒷모습(back) 스프라이트로 만들어서
@@ -756,18 +923,11 @@ def build_pet(pet):
     }
 
     n, durs = spec("running")
-    if scurry:
-        rows["running"] = {
-            "frames": [scurry_frame(s, i / n, SCURRY_ANGLE)
-                       for i, s in enumerate(sample(front_base, n))],
-            "durations": [SCURRY_FRAME_MS] * n,
-        }
-    else:
-        rows["running"] = {
-            "frames": [paste_centered(s, dy=round(-5 - 5 * math.cos(2 * math.pi * i / n)))
-                       for i, s in enumerate(sample(front_base, n))],
-            "durations": durs,
-        }
+    rows["running"] = {
+        "frames": [paste_centered(s, dy=round(-5 - 5 * math.cos(2 * math.pi * i / n)))
+                   for i, s in enumerate(sample(front_base, n))],
+        "durations": durs,
+    }
 
     # done is the completion state, reskinned as Infatuation: a warm pink
     # tint (replacing the old gold) plus floating hearts instead of just a
@@ -826,54 +986,7 @@ def build_pet(pet):
     rows["review"] = {"frames": review_frames, "durations": durs}
 
     row_order = ROWS_ORDER + [r for r in EXTRA_ROWS.get(pet["slug"], []) if r in rows]
-    sheet_w = FRAME * COLS
-    sheet_h = FRAME * len(row_order)
-    sheet = Image.new("RGBA", (sheet_w, sheet_h), (0, 0, 0, 0))
-
-    manifest_animations = {}
-    for row_idx, name in enumerate(row_order):
-        data = rows[name]
-        for col_idx, frame in enumerate(data["frames"]):
-            sheet.alpha_composite(frame, (col_idx * FRAME, row_idx * FRAME))
-        manifest_animations[name] = {
-            "row": row_idx,
-            "frames": len(data["frames"]),
-            "frameDurationsMs": data["durations"]
-        }
-
-    manifest = {
-        "id": pet["id"],
-        "displayName": pet["display_name"],
-        "description": pet["description"],
-        "spritesheetPath": "spritesheet.png",
-        "frame": {"width": FRAME, "height": FRAME},
-        "fps": 6,
-        "defaultAnimation": "idle",
-        "animations": manifest_animations,
-        **extra_manifest,
-    }
-
-    # Orca-importable bundle (Settings → Experimental → Pet → Import). Skipped
-    # for evolved forms (orca_bundle=False): those aren't user-selectable pets,
-    # the app just swaps them in as XP rises, so they'd only clutter the repo
-    # root with bundles no one imports.
-    if pet.get("orca_bundle", True):
-        out_dir = os.path.join(REPO_ROOT, pet["out_dir_name"])
-        os.makedirs(out_dir, exist_ok=True)
-        sheet.save(os.path.join(out_dir, "spritesheet.png"), optimize=True)
-        with open(os.path.join(out_dir, "pet.json"), "w") as f:
-            json.dump(manifest, f, indent=2, ensure_ascii=False)
-
-    # ConnorPet app's bundled copy, picked from the menu-bar pet switcher (or,
-    # for evolved forms, swapped in automatically) — written from the same
-    # in-memory sheet/manifest so it can never drift from any Orca bundle above.
-    app_dir = os.path.join(APP_RESOURCES_DIR, pet["slug"])
-    os.makedirs(app_dir, exist_ok=True)
-    sheet.save(os.path.join(app_dir, "spritesheet.png"), optimize=True)
-    with open(os.path.join(app_dir, "pet.json"), "w") as f:
-        json.dump(manifest, f, indent=2, ensure_ascii=False)
-
-    print(f"wrote {app_dir}/ ({sheet.size[0]}x{sheet.size[1]})")
+    compose_and_write(pet, rows, extra_manifest, row_order, FRAME)
 
 
 def main():
