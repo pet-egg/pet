@@ -770,6 +770,8 @@ python3 scripts/build_sheet.py
 
 `scripts/build_sheet.py`의 `PETS` 리스트에 등록된 각 기본 포켓몬(현재 리아코 #158, 메타몽 #132, 파이리 #4, 꼬부기 #7, 꼬마돌 #74, 이브이 #133, 치코리타 #152, 아차모 #255, 토게피 #175, 뚜꾸리 #498, 잠만보 #143, 팬텀 #94, 디그다 #50, 피카츄 #25)과 `_EVOLUTIONS`의 진화형(크로콘 #159, 장크로다일 #160, 리자드 #5, 리자몽 #6, 어니부기 #8, 거북왕 #9, 데구리 #75, 딱구리 #76, 베이리프 #153, 메가니움 #154, 영뿔 #256, 번치코 #257, 샤미드 #134, 닥트리오 #51, 라이츄 #26)마다 PokeAPI에서 5세대 애니메이션 배틀 스프라이트를 다시 받아서 `ConnorPet/Sources/ConnorPet/Resources/pets/<slug>/`의 앱 번들 사본을(기본 펫은 추가로 `<slug>.codex-pet/`까지) 처음부터 재생성합니다 — 완전히 재현 가능하고, 바이너리 원본 에셋은 캐시에 받아둘 뿐 저장소에 원본을 커밋하지 않습니다. 새 포켓몬을 펫 선택 메뉴에 추가하려면 `PETS`에 항목을 하나 더 넣고 스크립트를 다시 돌린 뒤, `AppDelegate.swift`의 `availablePetSlugs`에 슬러그를 추가하면 됩니다. 진화형을 바꾸려면 `_EVOLUTIONS`와 `AppDelegate.evolutionChains`를 함께 수정하세요.
 
+> **피카츄만 예외 — PMD 스프라이트를 씁니다.** gen5 배틀 스프라이트는 "두 발로 선 정면 1장"이라 아무리 굴려도 진짜 걷기/달리기 사이클이 안 나옵니다(회전·스쿼시 편법의 원인). 피카츄는 방향별·다프레임 이동 애니메이션이 있는 [PMDCollab/SpriteCollab](https://github.com/PMDCollab/SpriteCollab)의 0025(피카츄, Pokémon Mystery Dungeon 스프라이트)를 받아 씁니다. `build_sheet.py`의 `build_pikachu_pmd()`가 `AnimData.xml`을 읽어 8방향 시트에서 필요한 방향(정면=Down / 오른쪽=Right / 왼쪽=Left)의 Walk 사이클을 뽑고, 잠듦은 Sleep 포즈, 실패는 Hurt 포즈에 매핑한 뒤 나머지 상태 스킨(Zzz·얼음·하트·빨강 떨림)은 다른 펫과 같은 공용 헬퍼로 입혀 동일한 9행 포맷으로 굽습니다. 다른 펫과 앱이 읽는 방식은 완전히 같습니다. (진화형 라이츄는 지시대로 피카츄만 예외라 여전히 gen5입니다.)
+
 ## 앱 아이콘
 
 dmg 로 빌드할 때 쓰는 앱 아이콘은 `assets/app-icon.png` 하나로 고정입니다
@@ -1223,4 +1225,4 @@ CONNORPET_SELFTEST=portrait swift run
 
 ## 크레딧 / 라이선스
 
-캐릭터 스프라이트는 Nintendo/Game Freak/Creatures Inc.의 포켓몬 에셋을 [PokeAPI](https://pokeapi.co/) 경유로 가져온 것으로, 개인/데모 용도로만 사용하고 독립된 에셋으로 재배포하지 않습니다. 그 외 이 저장소의 모든 코드(빌드 스크립트, Swift 앱, 미리보기 페이지)는 자유롭게 재사용해도 됩니다.
+캐릭터 스프라이트는 Nintendo/Game Freak/Creatures Inc.의 포켓몬 에셋을 [PokeAPI](https://pokeapi.co/) 경유로 가져온 것으로, 개인/데모 용도로만 사용하고 독립된 에셋으로 재배포하지 않습니다. **피카츄만** 예외로 [PMDCollab/SpriteCollab](https://github.com/PMDCollab/SpriteCollab)의 Pokémon Mystery Dungeon 스프라이트(0025, 원작자 Chunsoft)를 씁니다 — 같은 공식 게임 추출 도트라 취급은 동일하며, 개인/데모 용도로만 사용합니다. 그 외 이 저장소의 모든 코드(빌드 스크립트, Swift 앱, 미리보기 페이지)는 자유롭게 재사용해도 됩니다.
