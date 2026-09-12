@@ -16,7 +16,13 @@ curl -fsSL "https://raw.githubusercontent.com/pet-egg/pet/main/install.sh?$(date
 
 > `?$(date +%s)` 는 raw.githubusercontent.com 의 ~5분 캐시를 우회해 항상 최신 `install.sh` 를 받기 위한 것입니다.
 
-Homebrew 를 쓴다면 (같은 결과, `brew upgrade` 로 업데이트도 됨):
+**안정화(stable) 버전을 받고 싶다면** — 방금 나온 최신 대신 **패치가 충분히 쌓여 검증된 직전 마이너 버전**을 받습니다 (예: 최신이 `v1.6.0` 이면 `v1.5.4`). 자세한 정의는 아래 ["버전 규칙과 안정화 버전 받기"](#버전-규칙과-안정화-버전-받기):
+
+```sh
+curl -fsSL "https://raw.githubusercontent.com/pet-egg/pet/main/install.sh?$(date +%s)" | PET_CHANNEL=stable bash
+```
+
+Homebrew 를 쓴다면 (최신판, `brew upgrade` 로 업데이트도 됨):
 
 ```sh
 brew install --cask pet-egg/pet/pet
@@ -537,9 +543,9 @@ open /Applications/pet.app
 
 자동 확인·자동 다운로드는 코드에서 모두 꺼 둡니다(`UpdaterManager.swift`). 버전은 **git 태그가 단일 소스**입니다 — `CFBundleShortVersionString`=최신 태그(`vX.Y.Z`), `CFBundleVersion`=커밋 수(단조 증가라 Sparkle 비교에 안전). `make_app.sh`/CI 가 빌드 시 `git describe` 로 읽어 Info.plist 에 박습니다. 새 버전을 내려면 `git tag vX.Y.Z` 를 달면 됩니다.
 
-### 버전 규칙 (SemVer) 과 안정화 채널
+### 버전 규칙과 안정화 버전 받기
 
-태그는 [유의적 버전(SemVer)](https://semver.org/lang/ko/) `vX.Y.Z` 를 따릅니다:
+태그는 [유의적 버전(SemVer)](https://semver.org/lang/ko/) `vX.Y.Z` 를 따릅니다. **pre-release 태그(`-beta`/`-rc` 등)는 쓰지 않고, 모든 릴리스는 접미사 없는 안정 태그**입니다.
 
 | 변경 종류 | 올리는 자리 | 예 |
 |---|---|---|
@@ -549,9 +555,24 @@ open /Applications/pet.app
 
 **배포 리듬으로 보면** — **주말에 한 주치 기능을 모아 배포**할 때는 여러 기능이 묶이므로 **MINOR** 를 올리고, **평일에 작은 기능 하나씩** 낼 때는 **PATCH** 를 올립니다. (위 표의 "기능=MINOR / 버그수정=PATCH" 와 같은 원칙 — 주말 묶음은 여러 기능의 합이라 MINOR, 평일의 작은 단위는 PATCH 입니다.)
 
-**안정화(stable) 채널 — 일반 사용자가 받는 것.** 접미사 없는 태그(`vX.Y.Z`)가 **안정판**입니다. 설치 한 줄(`curl … install.sh`)과 `brew install --cask pet-egg/pet/pet`, 그리고 앱 안의 Sparkle 자동 업데이트는 **모두 `releases/latest` = 가장 최신 안정판**만 따라갑니다 — 즉 위 설치·업데이트 경로를 그대로 쓰면 자동으로 안정판을 받습니다. 이미 깔았다면 앱을 켜 두면 새 안정판이 나올 때 메뉴바에서 `⬆︎ 업데이트 설치` 로 알려 주고, 언제든 curl 한 줄을 다시 돌리거나 `brew upgrade --cask pet` 로도 최신 안정판으로 올릴 수 있습니다.
+#### 최신(latest) vs 안정화(stable)
 
-**불안정/테스트 배포 — pre-release.** 베타/RC 는 SemVer pre-release 태그 `vX.Y.Z-beta.N`/`-rc.N` 로 냅니다. CI 는 태그에 `-` 가 있으면 GitHub **pre-release** 로 올리고 `--latest`·Homebrew Cask 갱신·appcast 배포를 **건너뜁니다**. 그래서 `releases/latest` 는 직전 안정판에 그대로 머물고, **안정 채널 사용자(curl·brew·Sparkle)는 pre-release 를 자동으로 받지 않습니다.** 테스터는 그 태그의 릴리스 페이지에서 `pet.dmg` 를 직접 내려받으면 됩니다.
+- **최신(latest)** = 가장 최근에 나온 태그. `curl … install.sh`(옵션 없음)·`brew install --cask pet-egg/pet/pet`·앱 안 Sparkle 자동 업데이트가 모두 `releases/latest` 를 따라가는 **기본 경로**입니다.
+- **안정화(stable)** = **직전 마이너 라인의 마지막(최고 패치) 버전.** 방금 나온 마이너(예: `v1.6.0`)는 패치가 아직 안 쌓여 버그가 덜 걸러진 반면, **바로 이전 마이너 라인의 마지막 패치(`v1.5.4`)** 는 버그 수정이 충분히 누적돼 검증됐다고 봅니다. 새 마이너가 나와도 stable 은 이 "한 마이너 뒤, 최고 패치" 에 머뭅니다 — `v1.6.1`, `v1.6.2` 가 더 나와도 다음 마이너(`v1.7.0`)가 등장하기 전까지 stable = `v1.5.4`.
+
+**안정화 버전으로 설치하려면** `install.sh` 에 stable 채널을 지정합니다 (스크립트가 GitHub 릴리스 목록을 읽어 위 규칙대로 버전을 계산하고 그 태그의 `pet.dmg` 를 받습니다):
+
+```sh
+# 안정화(직전 마이너 최고 패치) 버전 설치
+curl -fsSL "https://raw.githubusercontent.com/pet-egg/pet/main/install.sh?$(date +%s)" | PET_CHANNEL=stable bash
+
+# (동일) 인자로 줘도 됨
+curl -fsSL "https://raw.githubusercontent.com/pet-egg/pet/main/install.sh?$(date +%s)" | bash -s -- --stable
+```
+
+옵션 없이 돌리면 종전대로 최신판을 받습니다. 마이너가 하나뿐이라 "직전 마이너" 가 없으면 stable 은 최신판으로 폴백합니다.
+
+> **참고**: Homebrew Cask 와 앱 내 Sparkle 자동 업데이트는 **최신판만** 따라갑니다(각각 단일 버전 Cask·`releases/latest` 기반). 안정화 라인에 고정하려면 위 `PET_CHANNEL=stable` 설치 경로를 쓰고, 앱 메뉴의 자동 업데이트 알림은 최신으로의 이동이므로 stable 을 유지하려면 누르지 마세요.
 
 ### 배포 담당자용 설정 (업데이트를 실제로 켜려면)
 
@@ -575,8 +596,6 @@ git push origin v1.0.0
 - 서명된 **`appcast.xml` 을 Pages 로 배포**
 
 → 기존 사용자 앱이 다음 실행 때 새 버전을 감지합니다. (배포는 `v*` 태그 푸시로만 트리거됩니다 — 수동 `workflow_dispatch` 트리거는 제거됐습니다.)
-
-> **베타/RC 를 낼 때는** SemVer pre-release 태그를 씁니다 — `git tag v1.0.0-beta.1 && git push origin v1.0.0-beta.1`. CI 가 태그에 `-` 가 있으면 해당 릴리스를 GitHub **pre-release** 로 만들고 `--latest` 를 붙이지 않으며 `bump-cask`·`publish-appcast` 잡을 건너뜁니다. 그 결과 `releases/latest`(curl·brew 설치)와 appcast(Sparkle 자동 업데이트)는 직전 **안정판**에 그대로 머물고, 테스터만 그 pre-release 릴리스 페이지에서 `pet.dmg` 를 직접 받아 검증할 수 있습니다. 접미사 없는 태그(`vX.Y.Z`)를 밀면 그때 안정 채널로 승격됩니다.
 
 > 릴리스에는 서명 키가 필수입니다 — Secret 이 없으면 `appcast.xml` 이 생성되지 않아 `publish-appcast` 잡이 실패합니다(빌드/릴리스 자체는 되지만 자동 업데이트 피드는 안 올라감).
 

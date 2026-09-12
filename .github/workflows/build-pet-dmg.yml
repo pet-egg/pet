@@ -212,23 +212,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # SemVer pre-release(태그에 '-' 포함, 예: v1.2.0-beta.1)는 GitHub pre-release 로
-          # 올리고 --latest 를 붙이지 않는다 → releases/latest 는 직전 stable 에 그대로
-          # 머문다(curl/Homebrew 설치와 Sparkle 자동 업데이트가 안정 채널만 따라가도록).
-          # 접미사 없는 태그(vX.Y.Z)만 --latest = 안정판.
-          if printf '%s' "$GITHUB_REF_NAME" | grep -q '-'; then
-            RELEASE_FLAG="--prerelease"
-            NOTE_SUFFIX=" [pre-release — 안정 채널에는 자동 배포되지 않음]"
-          else
-            RELEASE_FLAG="--latest"
-            NOTE_SUFFIX=""
-          fi
           # 이미 있는 태그면 create 가 실패 → 그때는 asset 만 덮어쓴다(--clobber).
           gh release create "$GITHUB_REF_NAME" dist/pet.dmg \
             --repo "$GITHUB_REPOSITORY" \
             --title "$GITHUB_REF_NAME" \
-            --notes "Sparkle 자동 업데이트 지원 빌드 ($GITHUB_REF_NAME)$NOTE_SUFFIX" \
-            $RELEASE_FLAG \
+            --notes "Sparkle 자동 업데이트 지원 빌드 ($GITHUB_REF_NAME)" \
+            --latest \
           || gh release upload "$GITHUB_REF_NAME" dist/pet.dmg --clobber --repo "$GITHUB_REPOSITORY"
 
   # Homebrew Cask(pet-egg/homebrew-pet)의 version/sha256 을 이번 릴리스로 갱신한다.
@@ -236,11 +225,9 @@ jobs:
   # HOMEBREW_TAP_TOKEN 에 넣어 둬야 한다. 시크릿이 없으면 조용히 건너뛴다(= brew 탭을
   # 안 쓰는 배포자는 아무 설정 없이도 릴리스가 정상 동작). release 잡 뒤에 돌려야
   # 버전 태그 URL(releases/download/vX/pet.dmg)의 에셋이 이미 올라가 있다.
-  # pre-release 태그(vX.Y.Z-beta.N 등, ref_name 에 '-' 포함)는 안정 채널이 아니므로
-  # Homebrew Cask 를 갱신하지 않는다(brew 사용자는 안정판만 받도록).
   bump-cask:
     needs: release
-    if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
       - name: Update Homebrew cask
@@ -272,12 +259,9 @@ jobs:
   # 사전 준비: 저장소 Settings › Pages › Source 를 "GitHub Actions" 로 설정해 둘 것.
   # appcast 는 SPARKLE_EDDSA_PRIVATE_KEY 시크릿이 있어야 생성되므로, 시크릿이 없으면
   # 아티팩트가 없어 이 잡은 실패한다(= 릴리스에는 서명 키가 필수라는 신호).
-  # pre-release 태그는 appcast 를 배포하지 않는다 — appcast enclosure 는
-  # releases/latest/download/pet.dmg 를 가리키는데 pre-release 는 latest 가 아니라
-  # URL 이 어긋나고, 애초에 Sparkle 자동 업데이트는 안정 채널만 태워야 하기 때문.
   publish-appcast:
     needs: build-dmg
-    if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: read

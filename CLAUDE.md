@@ -79,6 +79,7 @@ UI/동작을 변경했으면 반드시 `swift run`으로 실제 앱을 띄워서
   - **버그 수정·문구/스프라이트/리소스 교체·리팩터 등 작은 변경** → **PATCH** (`v0.4.0` → `v0.4.1`)
   - **호환성이 깨지는 변경**(예: 상태 파일/훅 포맷을 구버전과 못 맞추게 바꿈) → **MAJOR** (`v0.4.1` → `v1.0.0`)
   - **배포 리듬**: **주말에 한 주치 기능을 모아 배포**할 때는 여러 기능이 묶이므로 **MINOR** 를 올린다. **평일에 작은 기능 하나씩** 낼 때는 **PATCH** 로 올린다. (위 "기능=MINOR / 버그수정=PATCH" 원칙과 결이 맞는다 — 주말 묶음은 사실상 여러 기능의 합이라 MINOR, 평일의 작은 단위는 PATCH.)
-  - **불안정/테스트 배포**는 SemVer pre-release 태그 `vX.Y.Z-beta.N`/`-rc.N` 로 단다. CI(`build-pet-dmg.yml`)는 태그에 `-` 가 있으면 GitHub **pre-release** 로 올리고 `--latest`·Homebrew Cask 갱신·appcast 배포를 **건너뛴다** — 그래서 `releases/latest` 는 직전 stable 에 머물고 curl 설치·`brew`·Sparkle 자동 업데이트가 타는 **안정(stable) 채널이 영향받지 않는다**. 안정판을 낼 때만 접미사 없는 태그(`vX.Y.Z`)를 단다. (자세한 배포 흐름은 README "자동 업데이트 (Sparkle)" 참고.)
+  - **pre-release 태그(`-beta`/`-rc` 등)는 쓰지 않는다** — 모든 릴리스는 접미사 없는 `vX.Y.Z` 안정 태그다.
+  - **"안정화(stable)" = 직전 마이너 라인의 최고 패치**: 최신은 방금 나온 마이너라 패치가 안 쌓여 검증이 덜 된 반면, **바로 이전 마이너 라인의 마지막 패치**는 버그 수정이 충분히 누적돼 검증됐다고 본다(예: 최신 `v1.6.0`, stable = `v1.5.4`). `install.sh` 는 `PET_CHANNEL=stable`(또는 `--stable`)이면 GitHub 릴리스 목록에서 이 버전을 계산해 그 태그의 `pet.dmg`(`releases/download/<tag>/pet.dmg`)를 받는다. 기본(무옵션)은 종전대로 최신(`releases/latest`)이다. 자세한 건 README "자동 업데이트 (Sparkle)" › "버전 규칙과 안정화 버전 받기" 참고.
 - **커밋 메시지는 항상 한글로 작성**: 제목/본문 모두 한글로 쓸 것 (`Co-Authored-By:` 트레일러 등 고정 형식 줄은 예외).
 - **`main` 브랜치는 보호 룰셋이 없음**: 룰셋상으로는 write 권한이 있는 협업자가 PR/승인 없이 `main`에 직접 push할 수 있고 force-push/브랜치 삭제도 막혀있지 않지만, **위 브랜치 전략(GitHub Flow)에 따라 직접 push하지 말고 기능 브랜치 + PR로 진행할 것**. 협업자 현황 확인 명령: `gh api repos/pet-egg/pet/collaborators --jq '.[] | {login, permissions}'`. 룰셋 현황 확인 명령: `gh api repos/pet-egg/pet/rulesets`.
