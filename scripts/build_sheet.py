@@ -114,12 +114,20 @@ SKILLS = {
 }
 EXTRA_ROWS = {slug: [cfg["row"]] for slug, cfg in SKILLS.items()}
 
-# 네 발로 엎드려 달리는 펫. 원본은 두 발로 선 정면 포즈라, 달리기 계열 행(running·
-# running-left·running-right)에서만 몸을 앞으로 크게 기울여(정면=왼쪽 기준 반시계 회전)
-# 질주하는 실루엣으로 만든다. 다른 행(잠듦·얼음·헤롱헤롱 등)은 선 포즈 그대로 둔다.
-PRONE_RUN = {"pikachu"}
-# 기울기(도). 90 이면 완전히 수평이라 "누워 버린" 것처럼 보여서 조금 덜 눕힌다.
-PRONE_RUN_ANGLE = 66
+# 네 발로 엎드려 종종거리며 달리는 펫. "하찮은 피카츄" 밈(YouTube Short)의 달리기를
+# 참고했다 — 몸을 바닥에 바짝 붙여 통통하고 낮게 웅크리고, 머리를 앞으로 숙인 채
+# 빠르게 종종거리며(상하 바운스 2번/좌우 흔들) 질주한다. 달리기 계열 행(running·
+# running-left·running-right)에만 적용하고, 다른 행(잠듦·얼음·헤롱헤롱 등)은 선 포즈
+# 그대로 둔다. 원본은 두 발로 선 정면(왼쪽 보기) 스프라이트라, 완전한 네 발 다리
+# 움직임은 못 만들지만 낮은 웅크림+숙인 머리+빠른 바운스로 밈의 "낮게 종종대는 질주"
+# 실루엣을 재현한다.
+SCURRY_RUN = {"pikachu"}
+# 머리를 앞으로 숙이는 각도(도). 밈은 등~머리 척추각이 30~40도쯤이라 그 정도만 숙인다
+# (예전 66도는 옆으로 누운 것처럼 보였다).
+SCURRY_ANGLE = 32
+# 종종거림은 아주 빠르다. 달리기 계열 행의 프레임당 지속시간을 기본(120~180ms)보다
+# 훨씬 짧게 덮어써 밈처럼 프레임을 촤라락 넘긴다.
+SCURRY_FRAME_MS = 70
 
 EFFECTS_DIR = os.path.join(HERE, "effects")
 # 불길 끝과 프레임 왼쪽 변 사이에 남길 여백. 0 이면 변에 닿아 잘린 것처럼 보인다.
@@ -500,16 +508,28 @@ def flip(img):
     return img.transpose(Image.FLIP_LEFT_RIGHT)
 
 
-def prone_lean(sprite, angle):
-    """정면(왼쪽 보기) 스프라이트를 앞으로 크게 기울여 네 발 질주 포즈로 만든다.
+def scurry_frame(sprite, t, angle):
+    """"하찮은 피카츄" 밈처럼 몸을 낮춰 종종거리는 질주 한 프레임(왼쪽 기준).
 
-    반시계로 돌리면 머리(위)가 진행 방향(왼쪽)으로 내려가고 엉덩이·뒷다리가 위로
-    들려 엎드려 달리는 실루엣이 된다. NEAREST 로 돌려 도트 느낌을 유지하고,
-    expand=True 로 회전 중 잘림을 막는다 — 커진 캔버스는 paste_centered 가 다시
-    프레임 중앙에 맞춰 준다(running-right 는 이 프레임을 통째로 flip 하므로 자동으로
-    머리가 오른쪽을 향한다).
+    t 는 루프 위상 [0,1). 한 루프에 다리 박자 2번(gallop)을 넣는다:
+      - 스쿼시&스트레치: 착지 때 세로로 눌리고(통통·낮게) 도약 때 늘어난다.
+      - 상하 바운스: 박자마다 톡톡 튀어 오르는 빠른 바운스.
+      - 좌우 흔들(waddle): 몸을 좌우로 살짝 기울였다 펴며 종종대는 느낌.
+    거기에 머리를 angle 만큼 앞(왼쪽 아래)으로 숙여 낮게 웅크린 실루엣을 만든다.
+    running-right 는 이 프레임을 통째로 flip 해서 만들므로 머리가 오른쪽을 향한다.
     """
-    return sprite.rotate(angle, resample=Image.NEAREST, expand=True)
+    phase = 2 * math.pi * t
+    squash = math.cos(2 * phase)                 # +1 눌림 / -1 늘어남 (박자 2번)
+    sx = 1.0 + 0.06 * squash
+    sy = 0.86 - 0.07 * squash
+    w0, h0 = sprite.size
+    body = sprite.resize((max(1, round(w0 * sx)), max(1, round(h0 * sy))), Image.NEAREST)
+    rock = 7 * math.sin(phase)                   # 좌우 흔들
+    leaned = body.rotate(angle + rock, resample=Image.NEAREST, expand=True)
+    bob = -abs(math.sin(phase)) * 9              # 박자마다 위로 톡 (음수=위)
+    dy = round(20 + bob)                          # +20: 바닥에 바짝 붙여 낮게
+    dx = round(5 * math.sin(phase))              # 좌우 사이드 스텝
+    return paste_centered(leaned, dx=dx, dy=dy)
 
 
 # Pokémon status-condition skins for the priority states from
@@ -669,19 +689,25 @@ def build_pet(pet):
     # 왼쪽) **왼쪽을 보고 있다.** 그래서 뒤집지 않은 프레임이 running-left 이고,
     # 좌우 반전한 쪽이 running-right 다. 예전에는 이게 반대로 들어가 있어서
     # 오른쪽으로 드래그하면 펫이 왼쪽을 보고 끌려갔다.
-    lean = pet["slug"] in PRONE_RUN
+    scurry = pet["slug"] in SCURRY_RUN
     n, durs = spec("running-left")
+    if scurry:
+        durs = [SCURRY_FRAME_MS] * n
     run_left_frames = []
     for i, s in enumerate(sample(front_base, n)):
         t = i / n
-        src = prone_lean(s, PRONE_RUN_ANGLE) if lean else s
-        run_left_frames.append(paste_centered(
-            src,
-            dx=round(14 * math.sin(2 * math.pi * t)),
-            dy=round(-4 - 4 * math.cos(4 * math.pi * t)),
-        ))
+        if scurry:
+            run_left_frames.append(scurry_frame(s, t, SCURRY_ANGLE))
+        else:
+            run_left_frames.append(paste_centered(
+                s,
+                dx=round(14 * math.sin(2 * math.pi * t)),
+                dy=round(-4 - 4 * math.cos(4 * math.pi * t)),
+            ))
     rows["running-left"] = {"frames": run_left_frames, "durations": durs}
     _, durs_right = spec("running-right")
+    if scurry:
+        durs_right = [SCURRY_FRAME_MS] * len(run_left_frames)
     rows["running-right"] = {"frames": [flip(f) for f in run_left_frames], "durations": durs_right}
 
     # waving 은 펫이 말하는 동안 재생된다. 예전에는 뒷모습(back) 스프라이트로 만들어서
@@ -730,12 +756,18 @@ def build_pet(pet):
     }
 
     n, durs = spec("running")
-    rows["running"] = {
-        "frames": [paste_centered(prone_lean(s, PRONE_RUN_ANGLE) if lean else s,
-                                  dy=round(-5 - 5 * math.cos(2 * math.pi * i / n)))
-                   for i, s in enumerate(sample(front_base, n))],
-        "durations": durs,
-    }
+    if scurry:
+        rows["running"] = {
+            "frames": [scurry_frame(s, i / n, SCURRY_ANGLE)
+                       for i, s in enumerate(sample(front_base, n))],
+            "durations": [SCURRY_FRAME_MS] * n,
+        }
+    else:
+        rows["running"] = {
+            "frames": [paste_centered(s, dy=round(-5 - 5 * math.cos(2 * math.pi * i / n)))
+                       for i, s in enumerate(sample(front_base, n))],
+            "durations": durs,
+        }
 
     # done is the completion state, reskinned as Infatuation: a warm pink
     # tint (replacing the old gold) plus floating hearts instead of just a
