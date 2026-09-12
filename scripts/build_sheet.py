@@ -301,7 +301,13 @@ PETS = [
         # 포켓몬이 아닌 절차적 펫. 도감번호가 없고, 도트를 직접 찍어 만든다
         # (build_bichon_frames). 실제 반려견이라 **대전은 하지 않는다**(동물보호) —
         # 그 게이팅은 앱 쪽 AppDelegate.nonBattlePetSlugs 에 있다.
+        #
+        # category="animal": 포켓몬 상태이상(얼음)이 실제 강아지한테는 어색하므로,
+        # 대기(blocked/waiting) 상태를 "앉아서 고개 갸웃 + ? 말풍선"으로 리스킨한다
+        # (build_pet 의 category 분기 참고). 대분류는 앱 메뉴 그룹(포켓몬/동물/
+        # 메이플스토리)과도 짝을 이룬다 — AppDelegate.petCategories.
         "slug": "bichon",
+        "category": "animal",
         "procedural": True,
         "out_dir_name": "bichon.codex-pet",
         "id": "bichon-bichon",
@@ -618,6 +624,45 @@ def draw_zzz(frame, t):
     return Image.alpha_composite(frame, overlay)
 
 
+def draw_question_bubble(frame, t):
+    """'?' 말풍선 — 동물(animal) 카테고리 펫의 '지시 대기' 상태 오버레이.
+
+    포켓몬은 대기 상태를 얼음(Freeze)으로 리스킨하지만, 실제 강아지한테 얼음은
+    어색하다. 대신 앉아서 고개를 갸웃한 포즈(draw_*_sitting) 위에 이 말풍선을 얹어
+    "블락됐어요, 어떻게 할까요?" 하고 주인을 기다리는 뉘앙스를 준다. Zzz·하트
+    오버레이와 같은 패턴 — 루프 위상 t 로 살짝 떠오르며 맥동한다.
+    """
+    overlay = Image.new("RGBA", frame.size, (0, 0, 0, 0))
+    d = ImageDraw.Draw(overlay)
+    scale = FRAME / FRAME_DEFAULT
+    bob = lerp_key([0.0, -3.0, 0.0, 3.0], t) * scale
+    pulse = lerp_key([0.80, 1.0, 1.0, 0.88], t)
+    a = int(240 * pulse)
+
+    # 펫이 왼쪽을 보므로 말풍선은 머리 위 오른쪽에 띄운다.
+    cx = frame.size[0] * 0.64
+    cy = frame.size[1] * 0.20 + bob
+    r = 24 * scale
+    line_w = max(1, round(2 * scale))
+    outline = (120, 132, 150, a)
+    bubble = (255, 255, 255, a)
+
+    # 꼬리(작은 원 두 개가 머리 쪽으로 내려간다) → 본체 순으로 그려 겹침 처리.
+    for frac, rr in ((1.15, 0.26), (0.85, 0.40)):
+        bx = cx - r * 0.55
+        by = cy + r * frac
+        br = r * rr
+        d.ellipse([bx - br, by - br, bx + br, by + br], fill=bubble, outline=outline, width=line_w)
+    d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=bubble, outline=outline, width=line_w)
+
+    # '?' 글자를 말풍선 중앙에.
+    font = _load_font(round(30 * scale))
+    tb = d.textbbox((0, 0), "?", font=font)
+    tw, th = tb[2] - tb[0], tb[3] - tb[1]
+    d.text((cx - tw / 2 - tb[0], cy - th / 2 - tb[1]), "?", font=font, fill=(96, 104, 124, a))
+    return Image.alpha_composite(frame, overlay)
+
+
 # ---------------------------------------------------------------------------
 # 절차적(procedural) 펫 — PokeAPI 에서 받을 수 없는 캐릭터.
 #
@@ -723,10 +768,83 @@ def build_bichon_frames():
     return frames
 
 
+# 앉아서 고개를 갸웃한 비숑 — 동물 카테고리의 대기(blocked/waiting) 포즈.
+# 캔버스를 base(74)보다 높게(92) 잡아 앉은 몸통·앞다리가 잘리지 않게 하고,
+# 머리(귀·얼굴)만 별도 레이어에 그려 목을 축으로 살짝 회전해 '갸웃'을 만든다.
+# 이후 build_pet 이 prepare_frames 로 base 와 같은 파이프라인(정수배 확대)에 태운다.
+_BICHON_SIT_H = 92
+
+
+def draw_bichon_sitting(t, blink, tilt_deg):
+    """앉아서 고개를 갸웃한 흰 비숑 한 프레임(왼쪽을 봄)."""
+    img = Image.new("RGBA", (_BICHON_W, _BICHON_SIT_H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+
+    sway = math.sin(2 * math.pi * t)
+
+    # 꼬리 — 앉은 자세라 엉덩이 뒤(오른쪽)에 말려 있다.
+    _fluff(d, 67, 62 + 1.5 * sway, 8, 8, n=9, bump=5.5)
+
+    # 몸통 — 세로로 선 복슬 오벌(엉덩이가 바닥에 닿음).
+    _fluff(d, 46, 54, 18, 21)
+
+    # 바닥에 닿는 그림자.
+    d.ellipse([30, 78, 62, 88], fill=_FLUFF_SHADE)
+
+    # 앞다리 두 개 — 몸 앞으로 곧게 내려 앉은 자세.
+    _leg(d, 34, 74)
+    _leg(d, 45, 75)
+
+    # ── 머리(귀·얼굴)를 별도 레이어에 그려 목(pivot)을 축으로 회전 → 고개 갸웃 ──
+    head = Image.new("RGBA", (_BICHON_W, _BICHON_SIT_H), (0, 0, 0, 0))
+    hd = ImageDraw.Draw(head)
+
+    hd.ellipse([38, 30, 48, 46], fill=_EAR_RIM)          # 뒤쪽(먼) 귀
+    hd.ellipse([39, 31, 47, 45], fill=_EAR)
+
+    _fluff(hd, 30, 30, 17, 16)                           # 머리 뭉치
+
+    hd.ellipse([15, 32, 27, 52], fill=_EAR_RIM)          # 앞쪽(가까운) 늘어진 귀
+    hd.ellipse([16, 33, 26, 51], fill=_EAR)
+
+    _fluff(hd, 19, 33, 6, 6, n=8, bump=4.2)              # 주둥이 털뭉치
+
+    hd.ellipse([25, 30, 33, 37], fill=_BLUSH)            # 볼터치
+    _eye(hd, 24, 28, blink)                              # 두 눈(3/4 앵글)
+    _eye(hd, 34, 29, blink)
+
+    hd.ellipse([13, 32, 19, 37], fill=_NOSE)             # 코
+    hd.ellipse([13.6, 32.6, 16, 34.4], fill=_NOSE_HI)
+    hd.line([16, 37, 19, 40], fill=_MOUTH, width=1)      # 입
+    hd.line([16, 37, 13, 40], fill=_MOUTH, width=1)
+
+    head = head.rotate(tilt_deg, resample=Image.BICUBIC, center=(34, 44))
+    img.alpha_composite(head)
+    return img
+
+
+def build_bichon_waiting_frames(n):
+    """대기 상태용 앉은 포즈 n장. 고개는 기본 기울기에 완만한 흔들림을 더하고,
+    가운데 한 프레임만 눈을 깜빡인다."""
+    frames = []
+    for i in range(n):
+        t = i / n
+        blink = (i == n // 2)
+        tilt = 12 + 3 * math.sin(2 * math.pi * t)
+        frames.append(draw_bichon_sitting(t, blink, tilt))
+    return frames
+
+
 # 절차적 펫의 base 프레임 생성기. build_pet 이 pet["procedural"] 일 때 여기서 뽑는다.
 # (build_bichon_frames 가 위에 정의된 뒤라야 하므로 여기 둔다.)
 PROCEDURAL_BUILDERS = {
     "bichon": build_bichon_frames,
+}
+
+# 동물 카테고리의 대기(waiting) 포즈 생성기. 슬러그별로 앉은-갸웃 포즈를 n장 돌려준다.
+# 여기 없는 동물은 base 포즈를 고정한 채 말풍선만 얹는 것으로 폴백한다(build_pet).
+ANIMAL_WAITING_BUILDERS = {
+    "bichon": build_bichon_waiting_frames,
 }
 
 
@@ -816,18 +934,32 @@ def build_pet(pet):
             tinted, dx=round(6 * math.sin(6 * math.pi * t)), dy=round(2 + 4 * t)))
     rows["failed"] = {"frames": fail_frames, "durations": durs}
 
-    # blocked/waiting wins the priority check immediately, so it's reskinned
-    # as Freeze: held on one pose (frozen == not moving) and encased in an
-    # angular ice crystal, with a faint shimmer across the loop instead of
-    # actual motion.
+    # blocked/waiting wins the priority check immediately, so it's reskinned per
+    # category. 포켓몬은 Freeze(얼음): 포즈를 프레임0에 고정하고 각진 얼음 결정으로
+    # 감싼 뒤 반짝임만 흐르게 한다. 동물(animal)은 얼음이 어색하므로 대신 "앉아서
+    # 고개를 갸웃 + ? 말풍선"으로 지시 대기를 표현한다(draw_bichon_sitting +
+    # draw_question_bubble). 대분류는 AppDelegate.petCategories 와 짝을 이룬다.
     n, durs = spec("waiting")
-    freeze_pose = paste_centered(front_base[0])
-    icy = tint(desaturate(freeze_pose, 0.35, 1.1), (170, 215, 250), 0.6)
-    rows["waiting"] = {
-        "frames": [draw_ice_crystal(icy, shimmer=lerp_key([0.85, 1.0, 1.0, 0.85], i / n))
-                   for i in range(n)],
-        "durations": durs,
-    }
+    if pet.get("category") == "animal":
+        sit_builder = ANIMAL_WAITING_BUILDERS.get(pet["slug"])
+        if sit_builder:
+            sit_base = prepare_frames(sit_builder(n))
+            base_frames = [paste_centered(sit_base[i % len(sit_base)]) for i in range(n)]
+        else:
+            # 전용 앉은 포즈가 없는 동물: base 포즈를 고정한 채 말풍선만 얹는다.
+            base_frames = [paste_centered(front_base[0]) for _ in range(n)]
+        rows["waiting"] = {
+            "frames": [draw_question_bubble(base_frames[i], i / n) for i in range(n)],
+            "durations": durs,
+        }
+    else:
+        freeze_pose = paste_centered(front_base[0])
+        icy = tint(desaturate(freeze_pose, 0.35, 1.1), (170, 215, 250), 0.6)
+        rows["waiting"] = {
+            "frames": [draw_ice_crystal(icy, shimmer=lerp_key([0.85, 1.0, 1.0, 0.85], i / n))
+                       for i in range(n)],
+            "durations": durs,
+        }
 
     n, durs = spec("running")
     rows["running"] = {

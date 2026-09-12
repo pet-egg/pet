@@ -90,6 +90,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// 포켓몬 스킨에서나 어울리지, 강아지에게 시킬 일이 아니다). 발견·노려보기는 그대로다.
     private static let nonBattlePetSlugs: Set<String> = ["bichon"]
 
+    /// 펫 대분류. 펫 선택 UI(설정 창 팝업)를 이 그룹으로 묶어 보여준다. "동물"은
+    /// 포켓몬 상태이상(얼음)이 어색하므로 대기(blocked/waiting) 상태를 "앉아서 고개
+    /// 갸웃 + ? 말풍선"으로 다르게 그린다 — 그 리스킨은 빌드 타임에 이뤄지고
+    /// (scripts/build_sheet.py 의 category 분기, PETS 의 "category":"animal"), 여기
+    /// 분류는 그와 짝을 이룬다. 아직 펫이 없는 카테고리(메이플스토리)는 UI 에서
+    /// "준비 중"으로 노출된다.
+    enum PetCategory: String, CaseIterable {
+        case pokemon
+        case animal
+        case maplestory
+        var displayName: String {
+            switch self {
+            case .pokemon: return "포켓몬"
+            case .animal: return "동물"
+            case .maplestory: return "메이플스토리"
+            }
+        }
+    }
+
+    /// slug → 대분류. 여기 없는 펫은 .pokemon 으로 본다(build_sheet.py 도 동일 기본값).
+    private static let petCategories: [String: PetCategory] = [
+        "bichon": .animal,
+    ]
+
+    static func category(of slug: String) -> PetCategory { petCategories[slug] ?? .pokemon }
+
     /// 지금 고른 펫이 대전할 수 있는지.
     private var currentPetCanBattle: Bool { !Self.nonBattlePetSlugs.contains(selectedPetSlug) }
 
@@ -1683,6 +1709,17 @@ extension AppDelegate: SettingsActionsDelegate {
     var settingsOrderedPets: [(slug: String, name: String)] {
         Self.availablePetSlugs.compactMap { slug in
             petDisplayNames[slug].map { (slug, $0) }
+        }
+    }
+
+    /// 대분류별로 묶은 펫 목록(포켓몬/동물/메이플스토리). 빈 카테고리도 포함해
+    /// 설정 창이 "준비 중"으로 노출한다 — 카테고리 체계 자체를 보이게 하려는 것.
+    var settingsPetGroups: [(category: String, pets: [(slug: String, name: String)])] {
+        Self.PetCategory.allCases.map { cat in
+            let pets = Self.availablePetSlugs
+                .filter { Self.category(of: $0) == cat }
+                .compactMap { slug in petDisplayNames[slug].map { (slug, $0) } }
+            return (cat.displayName, pets)
         }
     }
     var settingsSelectedPetSlug: String { selectedPetSlug }

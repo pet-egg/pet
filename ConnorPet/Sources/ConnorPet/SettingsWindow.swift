@@ -7,6 +7,9 @@ import CoreImage
 protocol SettingsActionsDelegate: AnyObject {
     // 펫
     var settingsOrderedPets: [(slug: String, name: String)] { get }
+    /// 대분류(포켓몬/동물/메이플스토리)별로 묶은 펫 목록. 빈 카테고리도 포함되며
+    /// 팝업에서 "준비 중"으로 노출한다.
+    var settingsPetGroups: [(category: String, pets: [(slug: String, name: String)])] { get }
     var settingsSelectedPetSlug: String { get }
     func settingsSelectPet(slug: String)
 
@@ -281,15 +284,38 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     // MARK: - Row builders
 
     private func petRows(_ d: SettingsActionsDelegate) -> [RowSpec] {
-        // 펫 선택 (팝업)
+        // 펫 선택 (팝업) — 대분류(포켓몬/동물/메이플스토리)별로 묶는다. 각 그룹 앞에
+        // 선택 불가한 헤더 항목을, 펫 항목은 한 단계 들여쓰기(indentationLevel)해
+        // 붙인다. 빈 카테고리는 "(준비 중)"으로 노출해 카테고리 체계를 보여 준다.
         let popup = NSPopUpButton(frame: .zero, pullsDown: false)
-        for pet in d.settingsOrderedPets {
-            let item = NSMenuItem(title: pet.name, action: nil, keyEquivalent: "")
-            item.representedObject = pet.slug
-            popup.menu?.addItem(item)
+        let menu = popup.menu!
+        var firstGroup = true
+        for group in d.settingsPetGroups {
+            if !firstGroup { menu.addItem(.separator()) }
+            firstGroup = false
+            let header = NSMenuItem(title: group.category, action: nil, keyEquivalent: "")
+            header.isEnabled = false
+            header.attributedTitle = NSAttributedString(string: group.category, attributes: [
+                .font: NSFont.systemFont(ofSize: 11, weight: .semibold),
+                .foregroundColor: NSColor.secondaryLabelColor,
+            ])
+            menu.addItem(header)
+            if group.pets.isEmpty {
+                let soon = NSMenuItem(title: "준비 중", action: nil, keyEquivalent: "")
+                soon.isEnabled = false
+                soon.indentationLevel = 1
+                menu.addItem(soon)
+            } else {
+                for pet in group.pets {
+                    let item = NSMenuItem(title: pet.name, action: nil, keyEquivalent: "")
+                    item.representedObject = pet.slug
+                    item.indentationLevel = 1
+                    menu.addItem(item)
+                }
+            }
         }
-        if let idx = d.settingsOrderedPets.firstIndex(where: { $0.slug == d.settingsSelectedPetSlug }) {
-            popup.selectItem(at: idx)
+        if let item = menu.items.first(where: { ($0.representedObject as? String) == d.settingsSelectedPetSlug }) {
+            popup.select(item)
         }
         popup.target = self
         popup.action = #selector(petPopupChanged(_:))
