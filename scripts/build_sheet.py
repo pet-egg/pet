@@ -114,6 +114,13 @@ SKILLS = {
 }
 EXTRA_ROWS = {slug: [cfg["row"]] for slug, cfg in SKILLS.items()}
 
+# 네 발로 엎드려 달리는 펫. 원본은 두 발로 선 정면 포즈라, 달리기 계열 행(running·
+# running-left·running-right)에서만 몸을 앞으로 크게 기울여(정면=왼쪽 기준 반시계 회전)
+# 질주하는 실루엣으로 만든다. 다른 행(잠듦·얼음·헤롱헤롱 등)은 선 포즈 그대로 둔다.
+PRONE_RUN = {"pikachu"}
+# 기울기(도). 90 이면 완전히 수평이라 "누워 버린" 것처럼 보여서 조금 덜 눕힌다.
+PRONE_RUN_ANGLE = 66
+
 EFFECTS_DIR = os.path.join(HERE, "effects")
 # 불길 끝과 프레임 왼쪽 변 사이에 남길 여백. 0 이면 변에 닿아 잘린 것처럼 보인다.
 JET_MARGIN = 8
@@ -493,6 +500,18 @@ def flip(img):
     return img.transpose(Image.FLIP_LEFT_RIGHT)
 
 
+def prone_lean(sprite, angle):
+    """정면(왼쪽 보기) 스프라이트를 앞으로 크게 기울여 네 발 질주 포즈로 만든다.
+
+    반시계로 돌리면 머리(위)가 진행 방향(왼쪽)으로 내려가고 엉덩이·뒷다리가 위로
+    들려 엎드려 달리는 실루엣이 된다. NEAREST 로 돌려 도트 느낌을 유지하고,
+    expand=True 로 회전 중 잘림을 막는다 — 커진 캔버스는 paste_centered 가 다시
+    프레임 중앙에 맞춰 준다(running-right 는 이 프레임을 통째로 flip 하므로 자동으로
+    머리가 오른쪽을 향한다).
+    """
+    return sprite.rotate(angle, resample=Image.NEAREST, expand=True)
+
+
 # Pokémon status-condition skins for the priority states from
 # PetAnimationState.swift: blocked/waiting -> Freeze, done -> Infatuation,
 # nothing -> Sleep. These layer a drawn overlay on top of the tinted sprite
@@ -650,12 +669,14 @@ def build_pet(pet):
     # 왼쪽) **왼쪽을 보고 있다.** 그래서 뒤집지 않은 프레임이 running-left 이고,
     # 좌우 반전한 쪽이 running-right 다. 예전에는 이게 반대로 들어가 있어서
     # 오른쪽으로 드래그하면 펫이 왼쪽을 보고 끌려갔다.
+    lean = pet["slug"] in PRONE_RUN
     n, durs = spec("running-left")
     run_left_frames = []
     for i, s in enumerate(sample(front_base, n)):
         t = i / n
+        src = prone_lean(s, PRONE_RUN_ANGLE) if lean else s
         run_left_frames.append(paste_centered(
-            s,
+            src,
             dx=round(14 * math.sin(2 * math.pi * t)),
             dy=round(-4 - 4 * math.cos(4 * math.pi * t)),
         ))
@@ -710,7 +731,8 @@ def build_pet(pet):
 
     n, durs = spec("running")
     rows["running"] = {
-        "frames": [paste_centered(s, dy=round(-5 - 5 * math.cos(2 * math.pi * i / n)))
+        "frames": [paste_centered(prone_lean(s, PRONE_RUN_ANGLE) if lean else s,
+                                  dy=round(-5 - 5 * math.cos(2 * math.pi * i / n)))
                    for i, s in enumerate(sample(front_base, n))],
         "durations": durs,
     }
