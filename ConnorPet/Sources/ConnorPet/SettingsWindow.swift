@@ -89,6 +89,21 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     // MARK: - Show / refresh
 
     func show() {
+        // show() 는 **항상 메뉴 추적 루프 안에서** 불린다 — 메뉴바 "설정…"(상태바
+        // NSMenu)이든 펫 우클릭 "설정…"(NSMenu.popUpContextMenu)이든. 이미 한 번
+        // 연 창이 떠 있는 상태에서 다시 부르면, 아래 present() 의 rebuildContent 가
+        // `removeFromSuperview` 로 **직전에 만든 라이브 NSPopUpButton** 을 메뉴가
+        // 아직 추적 중인 도중에 헐어, AppKit 이 죽은 객체를 건드려 EXC_BAD_ACCESS
+        // 로 죽는다("doc(메뉴바)으로 연 뒤 우클릭으로 다시 열면 꺼지는" 버그 —
+        // refresh() 를 다음 런루프로 미룬 것과 완전히 같은 원인). 그래서 present()
+        // 도 다음 런루프로 미뤄, 메뉴 추적이 끝나고 액션 디스패치가 스택에서 빠진
+        // 뒤에 창을 그린다. 한 틱 늦게 뜨지만 눈에는 즉시로 보인다.
+        DispatchQueue.main.async { [weak self] in
+            self?.present()
+        }
+    }
+
+    private func present() {
         if window == nil { buildWindow() }
         rebuildContent()
         guard let window else { return }
