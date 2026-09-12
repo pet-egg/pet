@@ -9,6 +9,10 @@ struct BattlePeer: Equatable {
     let id: String
     let name: String
     let pet: String
+    /// 상대가 **방해금지 모드**인지. TXT 레코드로 광고돼 온다. 켜져 있으면 이쪽
+    /// UI 는 그 상대의 대전 신청·노려보기 버튼을 잠그고 "방해금지 중" 이라고 밝힌다
+    /// (상대는 목록에 그대로 보이되 클릭만 막힌다).
+    let dnd: Bool
     let endpoint: NWEndpoint
 
     static func == (lhs: BattlePeer, rhs: BattlePeer) -> Bool { lhs.id == rhs.id }
@@ -75,6 +79,11 @@ final class BattleService {
     /// Currently-selected pet slug; advertised so the opponent can render our
     /// actual character. Updated live via `updatePet(_:)`.
     private(set) var petSlug: String
+    /// **방해금지 모드.** 켜져 있으면 들어오는 대전 신청·노려보기를 받지 않고,
+    /// 그 사실을 TXT 레코드로 광고해 상대 앱이 미리 신청 버튼을 잠글 수 있게 한다.
+    /// 내가 상대를 노려보거나 신청하는 것(보내는 쪽)은 막지 않는다 — 이 모드는
+    /// "받지 않음" 이지 "끊음" 이 아니다. 라이브 갱신은 `updateDND(_:)`.
+    private(set) var dndEnabled: Bool
 
     /// Fires (on main) whenever the discovered-peer set changes.
     var onPeersChanged: (([BattlePeer]) -> Void)?
@@ -110,9 +119,10 @@ final class BattleService {
     /// 없는데, 지역 변수로만 두면 .ready 가 오기도 전에 해제돼 아무것도 못 보낸다.
     private var stares: Set<BattleConnection> = []
 
-    init(displayName: String? = nil, petSlug: String) {
+    init(displayName: String? = nil, petSlug: String, dndEnabled: Bool = false) {
         self.displayName = displayName ?? (Host.current().localizedName ?? "someone")
         self.petSlug = petSlug
+        self.dndEnabled = dndEnabled
     }
 
     /// Update the advertised pet after the user switches characters in the menu.
@@ -121,6 +131,16 @@ final class BattleService {
         queue.async {
             guard slug != self.petSlug else { return }
             self.petSlug = slug
+            self.listener?.service = self.makeService()
+        }
+    }
+
+    /// 방해금지 모드를 켜고 끈다. TXT 레코드를 다시 광고해, 상대 앱이 신청 버튼을
+    /// 잠글지 여부를 곧바로 알 수 있게 한다.
+    func updateDND(_ on: Bool) {
+        queue.async {
+            guard on != self.dndEnabled else { return }
+            self.dndEnabled = on
             self.listener?.service = self.makeService()
         }
     }
@@ -150,6 +170,7 @@ final class BattleService {
         txt["id"] = instanceID
         txt["name"] = displayName
         txt["pet"] = petSlug
+        txt["dnd"] = dndEnabled ? "1" : "0"
         // Use the instance UUID as the Bonjour instance name so two copies on
         // the same Mac never collide / get auto-renamed.
         return NWListener.Service(name: instanceID, type: battleServiceType, txtRecord: txt)
@@ -197,6 +218,15 @@ final class BattleService {
     }
 
     private func handleInboundMessage(_ msg: BattleMessage, on conn: BattleConnection) {
+        // 방해금지 모드면 들어오는 상호작용(대전 신청·노려보기)을 받지 않는다. 상대
+        // 앱은 TXT 레코드를 보고 이미 버튼을 잠갔을 테지만, 그 정보가 아직 안 퍼졌거나
+        // 구버전 상대일 수 있으니 여기서도 조용히 끊는다. 응답(decline)을 보내지 않는
+        // 이유: "거절" 은 사용자가 내린 판단처럼 보이는데, 방해금지는 아예 받지 않는
+        // 것이라 신청자 쪽 카운트다운이 "응답하지 않음" 으로 조용히 끝나는 편이 맞다.
+        if dndEnabled {
+            queue.asyncAfter(deadline: .now() + 0.3) { conn.cancel() }
+            return
+        }
         // 노려보기는 응답이 없다. 알림만 띄우고 연결을 닫는다.
         if msg.type == .stare {
             let name = msg.fromName ?? "누군가"
@@ -281,7 +311,9 @@ final class BattleService {
                   let id = txt["id"], id != instanceID,   // skip ourselves
                   let name = txt["name"],
                   let pet = txt["pet"] else { continue }
-            next[id] = BattlePeer(id: id, name: name, pet: pet, endpoint: result.endpoint)
+            // 구버전은 dnd 필드를 안 보내 nil 로 온다 → 방해금지 아님으로 본다.
+            let dnd = (txt["dnd"] == "1")
+            next[id] = BattlePeer(id: id, name: name, pet: pet, dnd: dnd, endpoint: result.endpoint)
         }
         peers = next
         let list = Array(next.values).sorted { $0.name < $1.name }

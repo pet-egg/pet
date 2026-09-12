@@ -55,6 +55,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     //     말풍선(challengeBubble)만 10초 띄우고, 눌러야 예전 수락/거절 모달이 뜬다.
     private var challengeBubble: ChallengeBubbleWindow?
     private var challengeCountdown: ChallengeCountdownWindow?
+    // 노려보기를 받았을 때 펫 옆에 뜨는 작은 말풍선(펫 도트 + 문구). 누르면 얼굴이
+    // 큼직하게 뜨는 모달로 이어진다. 대전 신청 말풍선과 같은 클릭-가능 패널이다.
+    private var stareBubble: StareBubbleWindow?
     private var pendingChallengeBubble = false
     private let challengeWaitSeconds: TimeInterval = 20   // 신청자 카운트다운(막대)
     private let challengeBubbleSeconds: TimeInterval = 10 // 신청받은 쪽 말풍선 노출
@@ -141,6 +144,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // Whether the XP bar is always shown vs. only on hover (menu toggle). Default off.
     private var barAlwaysVisible = false
+
+    // 방해금지 모드. 켜지면 같은 Wi-Fi 상대가 거는 대전·노려보기를 받지 않고,
+    // 그 사실을 광고해 상대 앱이 신청 버튼을 잠그게 한다. 보내는 쪽(내가 거는 것)은
+    // 막지 않는다. Default off. 메뉴바·우클릭·설정창 어디서든 켤 수 있다.
+    private var dndEnabled = false
     // Live XP state, so re-selecting a pet re-derives the right evolved form.
     private var currentStage = 0
     private var currentPercent: Double = 0
@@ -221,6 +229,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         view.frame = NSRect(x: 0, y: 0, width: size, height: viewHeight)
         barAlwaysVisible = Self.savedBarAlwaysVisible(fallback: false)
         view.setBarAlwaysVisible(barAlwaysVisible)
+        dndEnabled = Self.savedDNDEnabled(fallback: false)
+        view.dndEnabled = dndEnabled
         evolutionEnabled = Self.savedEvolutionEnabled(fallback: false)
         // 실행 방식이 바뀌면 UserDefaults 도메인이 갈려 경험치가 사라진 것처럼 보인다.
         // 예전 도메인에 값이 남아 있으면 한 번만 가져온다(XPMigration 참고).
@@ -273,6 +283,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self?.watcher?.acknowledgeDone()
         }
         view.onOpenSettings = { [weak self] in self?.openSettingsWindow() }
+        view.onToggleDND = { [weak self] in self?.toggleDND() }
         view.onHoverChanged = { [weak self] on in
             self?.xpHovering = on
             self?.updateXPDetailWindow()
@@ -286,6 +297,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         xpDetailWindow = XPDetailWindow()
         challengeBubble = ChallengeBubbleWindow()
         challengeCountdown = ChallengeCountdownWindow()
+        stareBubble = StareBubbleWindow()
         loadSkillEffect(for: sheet)
 
         setUpStatusItem()
@@ -304,6 +316,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             controller.delegate = self
             controller.debugRenderPNG(to: path)
             DispatchQueue.main.async { NSApp.terminate(nil) }
+            return
+        }
+
+        // 디버그 전용: 노려보기 말풍선(펫 도트 + 문구)을 PNG 로 떠서 확인하고 종료한다.
+        if let path = ProcessInfo.processInfo.environment["CONNORPET_DEBUG_STARE"] {
+            presentStare(fromName: "연습상대", fromPet: selectedPetSlug)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                if let view = self?.stareBubble?.contentView,
+                   let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
+                    view.cacheDisplay(in: view.bounds, to: rep)
+                    if let png = rep.representation(using: .png, properties: [:]) {
+                        try? png.write(to: URL(fileURLWithPath: path))
+                    }
+                }
+                NSApp.terminate(nil)
+            }
             return
         }
 
@@ -405,7 +433,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: - LAN battle wiring
 
     private func startBattleService() {
-        let service = BattleService(petSlug: selectedPetSlug)
+        let service = BattleService(petSlug: selectedPetSlug, dndEnabled: dndEnabled)
         service.onPeersChanged = { [weak self] peers in
             self?.battlePeers = peers
             self?.statusDidChange()
@@ -452,6 +480,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func challenge(peerID: String) {
         guard let peer = battlePeers.first(where: { $0.id == peerID }),
               let service = battleService else { return }
+        // 방해금지 중인 상대에겐 걸지 않는다(UI 가 이미 잠갔지만 목록이 낡았을 수 있다).
+        guard !peer.dnd else { return }
         // Avoid stacking battles / duplicate countdowns.
         guard battleWindow == nil, challengeCountdown?.isShowing != true else { return }
         // 신청자는 20초 카운트다운 막대를 본다. 그 안에 상대가 수락/거절하면 아래
@@ -575,12 +605,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// placeholder while nobody's around yet.
     /// 누가 노려봤을 때 뜨는 알림. 확인 버튼 하나뿐이다.
     private func presentStare(fromName: String, fromPet: String) {
-        // 상대 펫의 얼굴을 함께 띄운다 — 누가 노려봤는지는 이름보다 그림이 빨리 읽힌다.
-        // 그림은 주고받지 않고 slug 로 각자 번들에서 찾는다(PetPortrait 참고).
-        // 우리 번들에 없는 펫이면 nil 이라 문구만 뜬다.
-        BattleDialog.info(title: "노려보기",
-                          message: "\(fromName)의 \(Self.koreanPetName(fromPet))가\n노려봅니다.",
-                          portrait: PetPortrait.face(of: fromPet))
+        // 노려보기는 남이 거는 상호작용이라, 업무 중 가운데 모달로 바로 튀어나오면
+        // 방해가 된다. 그래서 먼저 펫 옆에 작은 **말풍선**만 조용히 띄우고("모든
+        // 상호작용은 말풍선으로, 모달은 바로 X" 원칙 — README/CLAUDE 참고), 말풍선을
+        // **누르면** 그때 예전처럼 상대 펫 얼굴이 큼직하게 뜨는 모달을 연다.
+        // 말풍선 안에도 상대 펫 도트(얼굴 크롭)를 함께 보여 준다.
+        guard let petFrame = window?.frame else { return }
+        // slug 로 각자 번들에서 찾는다(PetPortrait 참고). 우리 번들에 없는 펫이면 nil.
+        let face = PetPortrait.face(of: fromPet)
+        let species = Self.koreanPetName(fromPet)
+
+        // 누르면 상대 펫 얼굴을 큼직하게 띄우는 기존 모달로 이어진다.
+        stareBubble?.onClick = {
+            BattleDialog.info(title: "노려보기",
+                              message: "\(fromName)의 \(species)가\n노려봅니다.",
+                              portrait: face)
+        }
+        stareBubble?.show(above: petFrame, dot: face,
+                          text: "😠 \(fromName)의 \(species)가 노려봐요!",
+                          duration: 8)
     }
 
     /// 매니페스트의 표시 이름("파이리 (Charmander)")에서 한글 이름만 뽑는다.
@@ -712,6 +755,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             submenu.addItem(empty)
         } else {
             for peer in battlePeers {
+                // 방해금지 중인 상대는 목록엔 그대로 두되(노출), 눌러도 소용없으니
+                // 잠그고 이유를 밝힌다.
+                if peer.dnd {
+                    let sub = NSMenuItem(title: "\(peer.name) — 방해금지 중", action: nil, keyEquivalent: "")
+                    sub.isEnabled = false
+                    sub.toolTip = "\(peer.name)님이 방해금지 모드예요. 노려보기를 받지 않아요."
+                    submenu.addItem(sub)
+                    continue
+                }
                 let sub = NSMenuItem(title: "\(peer.name) 노려보기", action: #selector(starePeer(_:)), keyEquivalent: "")
                 sub.target = self
                 sub.representedObject = peer.id
@@ -731,6 +783,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// 메뉴바·설정창 공통 진입점.
     private func stare(peerID: String) {
         guard let peer = battlePeers.first(where: { $0.id == peerID }) else { return }
+        // 방해금지 중인 상대에겐 걸지 않는다(UI 가 이미 잠갔지만 목록이 낡았을 수 있다).
+        guard !peer.dnd else { return }
         battleService?.stare(at: peer)
     }
 
@@ -743,6 +797,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             submenu.addItem(empty)
         } else {
             for peer in battlePeers {
+                // 방해금지 중인 상대는 목록엔 그대로 두되(노출), 신청을 잠그고 이유를 밝힌다.
+                if peer.dnd {
+                    let item = NSMenuItem(title: "\(peer.name) — 방해금지 중", action: nil, keyEquivalent: "")
+                    item.isEnabled = false
+                    item.toolTip = "\(peer.name)님이 방해금지 모드예요. 대전 신청을 받지 않아요."
+                    submenu.addItem(item)
+                    continue
+                }
                 let item = NSMenuItem(title: "\(peer.name)에게 신청", action: #selector(challengePeer(_:)), keyEquivalent: "")
                 item.target = self
                 item.representedObject = peer.id
@@ -1007,6 +1069,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         evoToggle.state = evolutionEnabled ? .on : .off
         menu.addItem(evoToggle)
 
+        // 방해금지 모드: 켜면 같은 Wi-Fi 상대가 거는 대전·노려보기를 받지 않는다.
+        let dndToggle = NSMenuItem(title: "방해금지 모드", action: #selector(toggleDND), keyEquivalent: "")
+        dndToggle.target = self
+        dndToggle.state = dndEnabled ? .on : .off
+        dndToggle.toolTip = "켜면 다른 사람이 대전·노려보기를 걸 수 없어요. 상대 목록엔 '방해금지 중'으로 보입니다."
+        menu.addItem(dndToggle)
+
         // 되돌릴 수 없으므로 확인을 받는다.
         let resetItem = NSMenuItem(title: "모든 경험치 초기화", action: #selector(resetAllXP), keyEquivalent: "")
         resetItem.target = self
@@ -1117,6 +1186,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         barAlwaysVisible = on
         petView?.setBarAlwaysVisible(barAlwaysVisible)
         Self.saveBarAlwaysVisible(barAlwaysVisible)
+        statusDidChange()
+    }
+
+    @objc private func toggleDND() { setDND(!dndEnabled) }
+
+    /// 메뉴바·우클릭·설정창 공통 진입점. 방해금지 모드를 켜고 끈다. 대전 서비스에
+    /// 알려 광고(TXT)를 갱신하고, 우클릭 메뉴 체크 표시를 위해 펫 뷰에도 반영한다.
+    private func setDND(_ on: Bool) {
+        guard on != dndEnabled else { return }
+        dndEnabled = on
+        petView?.dndEnabled = on
+        battleService?.updateDND(on)
+        Self.saveDNDEnabled(on)
         statusDidChange()
     }
 
@@ -1593,6 +1675,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return UserDefaults.standard.bool(forKey: barAlwaysVisibleDefaultsKey)
     }
 
+    // MARK: - 방해금지 모드 persistence
+
+    private static let dndEnabledDefaultsKey = "doNotDisturbEnabled"
+
+    private static func saveDNDEnabled(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: dndEnabledDefaultsKey)
+    }
+
+    // Defaults to `fallback` (false — 방해금지 꺼짐) when nothing saved yet.
+    private static func savedDNDEnabled(fallback: Bool) -> Bool {
+        guard UserDefaults.standard.object(forKey: dndEnabledDefaultsKey) != nil else { return fallback }
+        return UserDefaults.standard.bool(forKey: dndEnabledDefaultsKey)
+    }
+
     // MARK: - Evolution settings persistence
 
     private static let evolutionEnabledDefaultsKey = "evolutionEnabled"
@@ -1746,6 +1842,8 @@ extension AppDelegate: SettingsActionsDelegate {
     func settingsSetEvolutionEnabled(_ on: Bool) { setEvolutionEnabled(on) }
     var settingsBarAlwaysVisible: Bool { barAlwaysVisible }
     func settingsSetBarAlwaysVisible(_ on: Bool) { setBarAlwaysVisible(on) }
+    var settingsDNDEnabled: Bool { dndEnabled }
+    func settingsSetDND(_ on: Bool) { setDND(on) }
 
     func settingsResetAllXP() { resetAllXP() }
 
@@ -1754,8 +1852,8 @@ extension AppDelegate: SettingsActionsDelegate {
     var settingsFullDiskAccessGranted: Bool { FullDiskAccess.isGranted() }
     func settingsOpenFullDiskAccess() { openFullDiskAccess() }
 
-    var settingsBattlePeers: [(id: String, name: String)] {
-        battlePeers.map { ($0.id, $0.name) }
+    var settingsBattlePeers: [(id: String, name: String, dnd: Bool)] {
+        battlePeers.map { ($0.id, $0.name, $0.dnd) }
     }
     func settingsChallenge(peerID: String) { challenge(peerID: peerID) }
     func settingsStare(peerID: String) { stare(peerID: peerID) }

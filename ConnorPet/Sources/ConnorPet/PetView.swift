@@ -83,6 +83,11 @@ final class PetView: NSView {
     /// 우클릭 메뉴의 "설정…"을 눌렀을 때. 설정 창을 여는 건 AppDelegate 몫이다 —
     /// 메뉴바 아이콘이 가려 접근 못 하는 사용자를 위한 두 번째 진입점이다.
     var onOpenSettings: (() -> Void)?
+    /// 우클릭 메뉴의 "방해금지 모드"를 눌렀을 때. 실제 토글·저장·광고는 AppDelegate 몫.
+    var onToggleDND: (() -> Void)?
+    /// 방해금지 모드가 켜져 있는지. 우클릭 메뉴 체크 표시에 쓴다 — AppDelegate 가
+    /// 값을 바꿀 때마다 여기에 반영한다.
+    var dndEnabled = false
     /// 호버가 켜지고 꺼질 때. 경험치 상세 창을 여닫는 데 쓴다 — 그 문구는 펫 창보다
     /// 길어서 별도 창(XPDetailWindow)에 그린다.
     var onHoverChanged: ((Bool) -> Void)?
@@ -338,6 +343,16 @@ final class PetView: NSView {
         // 설정과 종료를 맨 아래 한 묶음으로. 메뉴바 아이콘이 가려 접근 못 하는
         // 사용자를 위해, 메뉴바에 있던 기능을 모은 설정 창을 여기서도 연다.
         menu.addItem(.separator())
+
+        // 방해금지 모드: 켜면 같은 Wi-Fi 상대가 거는 대전·노려보기를 받지 않는다.
+        // 메뉴바·설정창과 같은 토글이라 어디서 켜든 상태가 일치한다.
+        let dnd = NSMenuItem(title: "방해금지 모드", action: #selector(toggleDND(_:)), keyEquivalent: "")
+        dnd.target = self
+        dnd.state = dndEnabled ? .on : .off
+        dnd.toolTip = "켜면 다른 사람이 대전·노려보기를 걸 수 없어요. 상대 목록엔 '방해금지 중'으로 보입니다."
+        dnd.isEnabled = true
+        menu.addItem(dnd)
+
         let settings = NSMenuItem(title: "설정…", action: #selector(openSettings(_:)), keyEquivalent: ",")
         settings.keyEquivalentModifierMask = [.command]
         settings.target = self
@@ -365,6 +380,10 @@ final class PetView: NSView {
         if let text = onClick?(), !text.isEmpty {
             speakWaking(text)
         }
+    }
+
+    @objc private func toggleDND(_ sender: NSMenuItem) {
+        onToggleDND?()
     }
 
     @objc private func openSettings(_ sender: NSMenuItem) {
