@@ -296,6 +296,18 @@ PETS = [
             "nothing=Sleep, working=running (unchanged). Built from PokeAPI gen5 battle sprites."
         ),
     },
+    {
+        "slug": "pikachu",
+        "dex_id": 25,
+        "out_dir_name": "pikachu.codex-pet",
+        "id": "pikachu-pikachu",
+        "display_name": "피카츄 (Pikachu)",
+        "description": (
+            "Custom connor-pet build: Pikachu / 피카츄 reacts to live Orca agent/project status, "
+            "skinned as Pokémon status conditions — blocked/waiting=Freeze, done=Infatuation, "
+            "nothing=Sleep, working=running (unchanged). Built from PokeAPI gen5 battle sprites."
+        ),
+    },
 ]
 
 
@@ -320,6 +332,7 @@ _EVOLUTIONS = [
     ("blaziken", 257, "번치코 (Blaziken)"),
     ("vaporeon", 134, "샤미드 (Vaporeon)"),
     ("dugtrio", 51, "닥트리오 (Dugtrio)"),
+    ("raichu", 26, "라이츄 (Raichu)"),
 ]
 for _slug, _dex, _name in _EVOLUTIONS:
     PETS.append({
