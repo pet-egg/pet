@@ -163,7 +163,18 @@ final class ClaudeDesktopStatusWatcher: AgentStatusWatching {
         // permission yet, or the web tree hasn't finished building) → treat as
         // "not generating" but don't fabricate a falling-edge done from it.
         let axSample = running ? probe.sample() : nil
-        if running, axSample == nil { logAXUnavailableOnce() }
+        if running, axSample == nil {
+            logAXUnavailableOnce()
+            // Window present but the web tree is momentarily unreadable (warming
+            // up just after Claude opens, or a renderer reload). We can't read
+            // the live turn state, so *hold* the last animation rather than let a
+            // false "not generating" decay busyLatch into a stale 헤롱헤롱 sitting
+            // over a real 얼음/달리기 (exactly the "opened Claude, status didn't
+            // sync" symptom). sample() already re-forced AX, so the tree returns within
+            // a poll or two. A gap from *no window / no permission* is not a tree
+            // gap, so it falls through to the normal idle/degraded handling.
+            if probe.lastWasTreeGap { return }
+        }
         let sampledGenerating = axSample?.generating ?? false
         let awaitingApproval = axSample?.awaitingApproval ?? false
 
@@ -308,6 +319,13 @@ final class ClaudeAXProbe {
     private var forcedPid: pid_t = 0
     /// Whether the last probe could read the AX tree at all (used for debug log).
     private(set) var lastReadable = false
+    /// The last probe found a *window* but no web content at all — the Chromium
+    /// web AX tree hasn't been built yet (warming up right after Claude opens) or
+    /// a renderer reload dropped it. Distinct from "no window / not running": in a
+    /// tree gap we genuinely can't tell the turn state, so the watcher should hold
+    /// its last animation rather than read the gap as idle (which would let a
+    /// stale 헤롱헤롱 sit over, e.g., an approval card just after opening Claude).
+    private(set) var lastWasTreeGap = false
 
     /// Bound on how many nodes we descend per poll — the stop button lives near
     /// the composer, so we never need to walk the whole document. Also keeps the
@@ -345,6 +363,7 @@ final class ClaudeAXProbe {
     /// Accessibility permission, Claude not running, or the web tree hasn't been
     /// built yet). A `nil` must never be turned into a "turn finished" edge.
     func sample() -> Sample? {
+        lastWasTreeGap = false
         guard AXIsProcessTrusted() else { lastReadable = false; return nil }
         guard let app = NSWorkspace.shared.runningApplications.first(where: {
             $0.bundleIdentifier == ClaudeDesktopStatusWatcher.bundleID
@@ -378,12 +397,30 @@ final class ClaudeAXProbe {
             scan(window, visited: &visited, found: &found)
             if found.allSeen { break }
         }
+
+        // A window is present but the web AX tree has no controls yet — it hasn't
+        // finished building (Chromium builds it asynchronously ~2–3s after open)
+        // or a renderer reload tore it down. Since the pid is unchanged the
+        // pid-gated force above won't refire, so re-force AXManualAccessibility
+        // here to bring the tree back, and report a *tree gap* (nil) so the
+        // watcher holds state instead of misreading the gap as "idle".
+        if !found.sawAny {
+            AXUIElementSetAttributeValue(axApp, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+            lastReadable = false
+            lastWasTreeGap = true
+            return nil
+        }
+
         return Sample(generating: found.stop, awaitingApproval: found.allow && found.deny)
     }
 
     /// The button kinds we're hunting for in one tree walk.
     private struct Buttons {
         var stop = false, allow = false, deny = false
+        /// Any button-role element at all was seen — proof the web AX tree is
+        /// built. The Claude UI always has web buttons (sidebar/composer) once the
+        /// tree exists, so "no buttons at all" reliably means it hasn't built yet.
+        var sawAny = false
         var allSeen: Bool { stop && allow && deny }
     }
 
@@ -401,6 +438,7 @@ final class ClaudeAXProbe {
 
     private func classify(_ element: AXUIElement, into found: inout Buttons) {
         guard let role = copyString(element, kAXRoleAttribute), role.contains("Button") else { return }
+        found.sawAny = true
         let label = [
             copyString(element, kAXTitleAttribute),
             copyString(element, kAXDescriptionAttribute),
