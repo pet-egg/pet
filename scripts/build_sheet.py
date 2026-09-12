@@ -663,6 +663,40 @@ def draw_question_bubble(frame, t):
     return Image.alpha_composite(frame, overlay)
 
 
+def _paw_print(draw, cx, cy, s, a, color):
+    """발자국 하나(위에서 본 젤리 모양) — 발바닥 패드 + 발가락 젤리 4개."""
+    r, g, b = color
+    col = (r, g, b, max(0, min(255, int(a))))
+    draw.ellipse([cx - 2.3 * s, cy - 0.2 * s, cx + 2.3 * s, cy + 2.6 * s], fill=col)  # 발바닥 패드
+    for tx, ty, tr in [(-1.9, -1.7, 0.95), (-0.65, -2.7, 0.9), (0.65, -2.7, 0.9), (1.9, -1.7, 0.95)]:
+        draw.ellipse([cx + tx * s - tr * s, cy + ty * s - tr * s,
+                      cx + tx * s + tr * s, cy + ty * s + tr * s], fill=col)          # 발가락 젤리
+
+
+def draw_paw_prints(frame, t):
+    """달리기(working) 상태의 발자국 트레일 — 동물(animal) 카테고리 전용 오버레이.
+
+    포켓몬은 색 변화 없이 바운스만 하는데, 동물은 그것만으론 '달리는' 느낌이 약하다.
+    제자리 달리기 뒤로 발자국이 생겨 **오른쪽(=진행 반대쪽)으로 흘러가며 페이드아웃**해,
+    세상이 지나가는 것처럼 달리는 인상을 준다(펫은 왼쪽을 보므로 발자국은 뒤=오른쪽에
+    남는다). 하트/Zzz 오버레이와 같은 패턴 — 루프 위상 t 로 순환한다.
+    """
+    overlay = Image.new("RGBA", frame.size, (0, 0, 0, 0))
+    d = ImageDraw.Draw(overlay)
+    scale = FRAME / FRAME_DEFAULT
+    W, H = frame.size
+    s = 3.0 * scale
+    color = (150, 140, 156)          # 펫 라인아트와 어울리는 흐린 토프색
+    n = 3
+    for k in range(n):
+        p = (t + k / n) % 1.0                              # 발자국 하나의 수명 0→1
+        x = W * 0.50 + p * (W * 0.30)                      # 뒤(오른쪽)로 흘러간다
+        y = H * 0.78 + (5 if k % 2 else -1) * scale        # 바닥 높이, 좌우 발을 번갈아
+        a = 185 * math.sin(math.pi * p)                    # 생겼다가 사라진다
+        _paw_print(d, x, y, s, a, color)
+    return Image.alpha_composite(frame, overlay)
+
+
 # ---------------------------------------------------------------------------
 # 절차적(procedural) 펫 — PokeAPI 에서 받을 수 없는 캐릭터.
 #
@@ -961,12 +995,15 @@ def build_pet(pet):
             "durations": durs,
         }
 
+    # running == "작업 중"(working). 포켓몬은 색 변화 없이 위아래 바운스만 한다.
+    # 동물(animal)은 바운스만으론 달리는 느낌이 약해, 같은 바운스 위에 발자국
+    # 트레일(draw_paw_prints)을 얹어 뒤로 발자국이 흘러가게 한다.
     n, durs = spec("running")
-    rows["running"] = {
-        "frames": [paste_centered(s, dy=round(-5 - 5 * math.cos(2 * math.pi * i / n)))
-                   for i, s in enumerate(sample(front_base, n))],
-        "durations": durs,
-    }
+    run_frames = [paste_centered(s, dy=round(-5 - 5 * math.cos(2 * math.pi * i / n)))
+                  for i, s in enumerate(sample(front_base, n))]
+    if pet.get("category") == "animal":
+        run_frames = [draw_paw_prints(f, i / n) for i, f in enumerate(run_frames)]
+    rows["running"] = {"frames": run_frames, "durations": durs}
 
     # done is the completion state, reskinned as Infatuation: a warm pink
     # tint (replacing the old gold) plus floating hearts instead of just a
