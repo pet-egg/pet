@@ -673,28 +673,30 @@ def _paw_print(draw, cx, cy, s, a, color):
                       cx + tx * s + tr * s, cy + ty * s + tr * s], fill=col)          # 발가락 젤리
 
 
-def draw_paw_prints(frame, t):
-    """달리기(working) 상태의 발자국 트레일 — 동물(animal) 카테고리 전용 오버레이.
+def paw_print_layer(size, t):
+    """달리기(working) 상태의 발자국 트레일 — 동물(animal) 카테고리 전용.
 
     포켓몬은 색 변화 없이 바운스만 하는데, 동물은 그것만으론 '달리는' 느낌이 약하다.
-    제자리 달리기 뒤로 발자국이 생겨 **오른쪽(=진행 반대쪽)으로 흘러가며 페이드아웃**해,
-    세상이 지나가는 것처럼 달리는 인상을 준다(펫은 왼쪽을 보므로 발자국은 뒤=오른쪽에
-    남는다). 하트/Zzz 오버레이와 같은 패턴 — 루프 위상 t 로 순환한다.
+    펫은 **왼쪽을 보고 달리므로**, 발자국은 진행 반대쪽인 **뒤(오른쪽)로 남아 멀어지며
+    페이드아웃**해 세상이 지나가는 인상을 준다. 하트/Zzz 처럼 루프 위상 t 로 순환한다.
+
+    **펫 레이어보다 아래(뒤)에 깔린다** — build_pet 이 이 레이어 위에 펫을 얹으므로,
+    몸통과 겹치는 발자국은 몸통에 가려져 "몸 위에 발자국이 찍히는" 문제가 없다.
     """
-    overlay = Image.new("RGBA", frame.size, (0, 0, 0, 0))
-    d = ImageDraw.Draw(overlay)
+    layer = Image.new("RGBA", size, (0, 0, 0, 0))
+    d = ImageDraw.Draw(layer)
     scale = FRAME / FRAME_DEFAULT
-    W, H = frame.size
-    s = 3.0 * scale
+    W, H = size
     color = (150, 140, 156)          # 펫 라인아트와 어울리는 흐린 토프색
     n = 3
     for k in range(n):
         p = (t + k / n) % 1.0                              # 발자국 하나의 수명 0→1
-        x = W * 0.50 + p * (W * 0.30)                      # 뒤(오른쪽)로 흘러간다
-        y = H * 0.78 + (5 if k % 2 else -1) * scale        # 바닥 높이, 좌우 발을 번갈아
-        a = 185 * math.sin(math.pi * p)                    # 생겼다가 사라진다
+        x = W * 0.54 + p * (W * 0.34)                      # 뒤(오른쪽)로 멀어진다
+        y = H * 0.84 + (4 if k % 2 else -1) * scale        # 발밑 바닥 높이, 좌우 발 번갈아
+        s = (3.4 - 0.9 * p) * scale                        # 멀어질수록 조금 작게
+        a = 195 * math.sin(math.pi * p)                    # 생겼다가 사라진다
         _paw_print(d, x, y, s, a, color)
-    return Image.alpha_composite(frame, overlay)
+    return layer
 
 
 # ---------------------------------------------------------------------------
@@ -996,13 +998,20 @@ def build_pet(pet):
         }
 
     # running == "작업 중"(working). 포켓몬은 색 변화 없이 위아래 바운스만 한다.
-    # 동물(animal)은 바운스만으론 달리는 느낌이 약해, 같은 바운스 위에 발자국
-    # 트레일(draw_paw_prints)을 얹어 뒤로 발자국이 흘러가게 한다.
+    # 동물(animal)은 바운스만으론 달리는 느낌이 약해, 뒤로 발자국 트레일을 남긴다.
+    # 발자국 레이어를 **펫보다 아래**에 깔아(ground 위에 펫을 얹음) 몸통과 겹치는
+    # 발자국이 몸통에 가려지게 한다 — 몸 위에 발자국이 찍히지 않는다.
     n, durs = spec("running")
-    run_frames = [paste_centered(s, dy=round(-5 - 5 * math.cos(2 * math.pi * i / n)))
-                  for i, s in enumerate(sample(front_base, n))]
-    if pet.get("category") == "animal":
-        run_frames = [draw_paw_prints(f, i / n) for i, f in enumerate(run_frames)]
+    is_animal = pet.get("category") == "animal"
+    run_frames = []
+    for i, s in enumerate(sample(front_base, n)):
+        t = i / n
+        pet_layer = paste_centered(s, dy=round(-5 - 5 * math.cos(2 * math.pi * t)))
+        if is_animal:
+            ground = paw_print_layer(pet_layer.size, t)
+            run_frames.append(Image.alpha_composite(ground, pet_layer))
+        else:
+            run_frames.append(pet_layer)
     rows["running"] = {"frames": run_frames, "durations": durs}
 
     # done is the completion state, reskinned as Infatuation: a warm pink
