@@ -16,7 +16,13 @@ curl -fsSL "https://raw.githubusercontent.com/pet-egg/pet/main/install.sh?$(date
 
 > `?$(date +%s)` 는 raw.githubusercontent.com 의 ~5분 캐시를 우회해 항상 최신 `install.sh` 를 받기 위한 것입니다.
 
-Homebrew 를 쓴다면 (같은 결과, `brew upgrade` 로 업데이트도 됨):
+**안정화(stable) 버전을 받고 싶다면** — 방금 나온 최신 대신 **패치가 충분히 쌓여 검증된 직전 마이너 버전**을 받습니다 (예: 최신이 `v1.6.0` 이면 `v1.5.4`). 자세한 정의는 아래 ["버전 규칙과 안정화 버전 받기"](#버전-규칙과-안정화-버전-받기):
+
+```sh
+curl -fsSL "https://raw.githubusercontent.com/pet-egg/pet/main/install.sh?$(date +%s)" | PET_CHANNEL=stable bash
+```
+
+Homebrew 를 쓴다면 (최신판, `brew upgrade` 로 업데이트도 됨):
 
 ```sh
 brew install --cask pet-egg/pet/pet
@@ -536,6 +542,37 @@ open /Applications/pet.app
 - **눌렀을 때** — 그때부터 Sparkle 정식 UI(다운로드 → 검증 → 교체 → 재실행)가 뜹니다.
 
 자동 확인·자동 다운로드는 코드에서 모두 꺼 둡니다(`UpdaterManager.swift`). 버전은 **git 태그가 단일 소스**입니다 — `CFBundleShortVersionString`=최신 태그(`vX.Y.Z`), `CFBundleVersion`=커밋 수(단조 증가라 Sparkle 비교에 안전). `make_app.sh`/CI 가 빌드 시 `git describe` 로 읽어 Info.plist 에 박습니다. 새 버전을 내려면 `git tag vX.Y.Z` 를 달면 됩니다.
+
+### 버전 규칙과 안정화 버전 받기
+
+태그는 [유의적 버전(SemVer)](https://semver.org/lang/ko/) `vX.Y.Z` 를 따릅니다. **pre-release 태그(`-beta`/`-rc` 등)는 쓰지 않고, 모든 릴리스는 접미사 없는 안정 태그**입니다.
+
+| 변경 종류 | 올리는 자리 | 예 |
+|---|---|---|
+| **기능 추가** (새 펫·새 상태 소스·새 메뉴/설정·대전 기능 등) | **MINOR** (PATCH 는 0 으로) | `v0.3.4` → `v0.4.0` |
+| **버그 수정·문구/스프라이트/리소스 교체·리팩터 등 작은 변경** | **PATCH** | `v0.4.0` → `v0.4.1` |
+| **호환성이 깨지는 변경** (상태 파일/훅 포맷을 구버전과 못 맞추게 바꿈 등) | **MAJOR** | `v0.4.1` → `v1.0.0` |
+
+**배포 리듬으로 보면** — **주말에 한 주치 기능을 모아 배포**할 때는 여러 기능이 묶이므로 **MINOR** 를 올리고, **평일에 작은 기능 하나씩** 낼 때는 **PATCH** 를 올립니다. (위 표의 "기능=MINOR / 버그수정=PATCH" 와 같은 원칙 — 주말 묶음은 여러 기능의 합이라 MINOR, 평일의 작은 단위는 PATCH 입니다.)
+
+#### 최신(latest) vs 안정화(stable)
+
+- **최신(latest)** = 가장 최근에 나온 태그. `curl … install.sh`(옵션 없음)·`brew install --cask pet-egg/pet/pet`·앱 안 Sparkle 자동 업데이트가 모두 `releases/latest` 를 따라가는 **기본 경로**입니다.
+- **안정화(stable)** = **직전 마이너 라인의 마지막(최고 패치) 버전.** 방금 나온 마이너(예: `v1.6.0`)는 패치가 아직 안 쌓여 버그가 덜 걸러진 반면, **바로 이전 마이너 라인의 마지막 패치(`v1.5.4`)** 는 버그 수정이 충분히 누적돼 검증됐다고 봅니다. 새 마이너가 나와도 stable 은 이 "한 마이너 뒤, 최고 패치" 에 머뭅니다 — `v1.6.1`, `v1.6.2` 가 더 나와도 다음 마이너(`v1.7.0`)가 등장하기 전까지 stable = `v1.5.4`.
+
+**안정화 버전으로 설치하려면** `install.sh` 에 stable 채널을 지정합니다 (스크립트가 GitHub 릴리스 목록을 읽어 위 규칙대로 버전을 계산하고 그 태그의 `pet.dmg` 를 받습니다):
+
+```sh
+# 안정화(직전 마이너 최고 패치) 버전 설치
+curl -fsSL "https://raw.githubusercontent.com/pet-egg/pet/main/install.sh?$(date +%s)" | PET_CHANNEL=stable bash
+
+# (동일) 인자로 줘도 됨
+curl -fsSL "https://raw.githubusercontent.com/pet-egg/pet/main/install.sh?$(date +%s)" | bash -s -- --stable
+```
+
+옵션 없이 돌리면 종전대로 최신판을 받습니다. 마이너가 하나뿐이라 "직전 마이너" 가 없으면 stable 은 최신판으로 폴백합니다.
+
+> **참고**: Homebrew Cask 와 앱 내 Sparkle 자동 업데이트는 **최신판만** 따라갑니다(각각 단일 버전 Cask·`releases/latest` 기반). 안정화 라인에 고정하려면 위 `PET_CHANNEL=stable` 설치 경로를 쓰고, 앱 메뉴의 자동 업데이트 알림은 최신으로의 이동이므로 stable 을 유지하려면 누르지 마세요.
 
 ### 배포 담당자용 설정 (업데이트를 실제로 켜려면)
 
