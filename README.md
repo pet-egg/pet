@@ -537,6 +537,22 @@ open /Applications/pet.app
 
 자동 확인·자동 다운로드는 코드에서 모두 꺼 둡니다(`UpdaterManager.swift`). 버전은 **git 태그가 단일 소스**입니다 — `CFBundleShortVersionString`=최신 태그(`vX.Y.Z`), `CFBundleVersion`=커밋 수(단조 증가라 Sparkle 비교에 안전). `make_app.sh`/CI 가 빌드 시 `git describe` 로 읽어 Info.plist 에 박습니다. 새 버전을 내려면 `git tag vX.Y.Z` 를 달면 됩니다.
 
+### 버전 규칙 (SemVer) 과 안정화 채널
+
+태그는 [유의적 버전(SemVer)](https://semver.org/lang/ko/) `vX.Y.Z` 를 따릅니다:
+
+| 변경 종류 | 올리는 자리 | 예 |
+|---|---|---|
+| **기능 추가** (새 펫·새 상태 소스·새 메뉴/설정·대전 기능 등) | **MINOR** (PATCH 는 0 으로) | `v0.3.4` → `v0.4.0` |
+| **버그 수정·문구/스프라이트/리소스 교체·리팩터 등 작은 변경** | **PATCH** | `v0.4.0` → `v0.4.1` |
+| **호환성이 깨지는 변경** (상태 파일/훅 포맷을 구버전과 못 맞추게 바꿈 등) | **MAJOR** | `v0.4.1` → `v1.0.0` |
+
+**배포 리듬으로 보면** — **주말에 한 주치 기능을 모아 배포**할 때는 여러 기능이 묶이므로 **MINOR** 를 올리고, **평일에 작은 기능 하나씩** 낼 때는 **PATCH** 를 올립니다. (위 표의 "기능=MINOR / 버그수정=PATCH" 와 같은 원칙 — 주말 묶음은 여러 기능의 합이라 MINOR, 평일의 작은 단위는 PATCH 입니다.)
+
+**안정화(stable) 채널 — 일반 사용자가 받는 것.** 접미사 없는 태그(`vX.Y.Z`)가 **안정판**입니다. 설치 한 줄(`curl … install.sh`)과 `brew install --cask pet-egg/pet/pet`, 그리고 앱 안의 Sparkle 자동 업데이트는 **모두 `releases/latest` = 가장 최신 안정판**만 따라갑니다 — 즉 위 설치·업데이트 경로를 그대로 쓰면 자동으로 안정판을 받습니다. 이미 깔았다면 앱을 켜 두면 새 안정판이 나올 때 메뉴바에서 `⬆︎ 업데이트 설치` 로 알려 주고, 언제든 curl 한 줄을 다시 돌리거나 `brew upgrade --cask pet` 로도 최신 안정판으로 올릴 수 있습니다.
+
+**불안정/테스트 배포 — pre-release.** 베타/RC 는 SemVer pre-release 태그 `vX.Y.Z-beta.N`/`-rc.N` 로 냅니다. CI 는 태그에 `-` 가 있으면 GitHub **pre-release** 로 올리고 `--latest`·Homebrew Cask 갱신·appcast 배포를 **건너뜁니다**. 그래서 `releases/latest` 는 직전 안정판에 그대로 머물고, **안정 채널 사용자(curl·brew·Sparkle)는 pre-release 를 자동으로 받지 않습니다.** 테스터는 그 태그의 릴리스 페이지에서 `pet.dmg` 를 직접 내려받으면 됩니다.
+
 ### 배포 담당자용 설정 (업데이트를 실제로 켜려면)
 
 앱에는 이미 검증용 **공개키**(`SUPublicEDKey`)와 피드 주소(`SUFeedURL` = `https://pet-egg.github.io/pet/appcast.xml`)가 박혀 있습니다. **한 번만** 아래 두 가지를 준비하면, 그 뒤로는 **`git tag` 푸시 하나로 빌드·릴리스·Pages 배포가 전부 자동**입니다.
@@ -559,6 +575,8 @@ git push origin v1.0.0
 - 서명된 **`appcast.xml` 을 Pages 로 배포**
 
 → 기존 사용자 앱이 다음 실행 때 새 버전을 감지합니다. (배포는 `v*` 태그 푸시로만 트리거됩니다 — 수동 `workflow_dispatch` 트리거는 제거됐습니다.)
+
+> **베타/RC 를 낼 때는** SemVer pre-release 태그를 씁니다 — `git tag v1.0.0-beta.1 && git push origin v1.0.0-beta.1`. CI 가 태그에 `-` 가 있으면 해당 릴리스를 GitHub **pre-release** 로 만들고 `--latest` 를 붙이지 않으며 `bump-cask`·`publish-appcast` 잡을 건너뜁니다. 그 결과 `releases/latest`(curl·brew 설치)와 appcast(Sparkle 자동 업데이트)는 직전 **안정판**에 그대로 머물고, 테스터만 그 pre-release 릴리스 페이지에서 `pet.dmg` 를 직접 받아 검증할 수 있습니다. 접미사 없는 태그(`vX.Y.Z`)를 밀면 그때 안정 채널로 승격됩니다.
 
 > 릴리스에는 서명 키가 필수입니다 — Secret 이 없으면 `appcast.xml` 이 생성되지 않아 `publish-appcast` 잡이 실패합니다(빌드/릴리스 자체는 되지만 자동 업데이트 피드는 안 올라감).
 
