@@ -86,7 +86,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // (see scripts/build_sheet.py's PETS list, which is the source of truth for
     // this set). Display names shown in the menu come from each pet's own
     // manifest rather than being duplicated here.
-    private static let availablePetSlugs = ["totodile", "ditto", "charmander", "squirtle", "geodude", "eevee", "chikorita", "torchic", "togepi", "tepig", "snorlax", "gengar", "diglett", "pikachu"]
+    private static let availablePetSlugs = ["totodile", "ditto", "charmander", "squirtle", "geodude", "eevee", "chikorita", "torchic", "togepi", "tepig", "snorlax", "gengar", "diglett", "pikachu", "bichon"]
+
+    /// 대전을 하지 않는 펫. 흰 비숑은 실제 반려견이라 **동물보호 차원에서 대전 불가** —
+    /// 신청/수락/메뉴가 모두 이 목록을 보고 막힌다(불꽃 발사체로 서로를 쏘는 대전은
+    /// 포켓몬 스킨에서나 어울리지, 강아지에게 시킬 일이 아니다). 발견·노려보기는 그대로다.
+    private static let nonBattlePetSlugs: Set<String> = ["bichon"]
+
+    /// 펫 대분류. 펫 선택 UI(설정 창 팝업)를 이 그룹으로 묶어 보여준다. "동물"은
+    /// 포켓몬 상태이상(얼음)이 어색하므로 대기(blocked/waiting) 상태를 "앉아서 고개
+    /// 갸웃 + ? 말풍선"으로 다르게 그린다 — 그 리스킨은 빌드 타임에 이뤄지고
+    /// (scripts/build_sheet.py 의 category 분기, PETS 의 "category":"animal"), 여기
+    /// 분류는 그와 짝을 이룬다. 아직 펫이 없는 카테고리(메이플스토리)는 UI 에서
+    /// "준비 중"으로 노출된다.
+    enum PetCategory: String, CaseIterable {
+        case pokemon
+        case animal
+        case maplestory
+        var displayName: String {
+            switch self {
+            case .pokemon: return "포켓몬"
+            case .animal: return "동물"
+            case .maplestory: return "메이플스토리"
+            }
+        }
+    }
+
+    /// slug → 대분류. 여기 없는 펫은 .pokemon 으로 본다(build_sheet.py 도 동일 기본값).
+    private static let petCategories: [String: PetCategory] = [
+        "bichon": .animal,
+    ]
+
+    static func category(of slug: String) -> PetCategory { petCategories[slug] ?? .pokemon }
+
+    /// 지금 고른 펫이 대전할 수 있는지.
+    private var currentPetCanBattle: Bool { !Self.nonBattlePetSlugs.contains(selectedPetSlug) }
 
     /// 번들에 들어 있는 **모든** 펫 slug — 메뉴에 안 뜨는 진화형까지. 상대가 진화한
     /// 펫으로 노려볼 수 있으므로 초상 검증은 이 목록 전체를 봐야 한다.
@@ -470,6 +504,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // discovered peer automatically (drives two real instances without clicks).
     private func maybeAutoChallenge() {
         guard ProcessInfo.processInfo.environment["CONNORPET_BATTLE_AUTOCHALLENGE"] != nil,
+              currentPetCanBattle,
               battleWindow == nil, let peer = battlePeers.first, let service = battleService else { return }
         service.challenge(peer) { _ in }
     }
@@ -483,6 +518,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func challenge(peerID: String) {
         guard let peer = battlePeers.first(where: { $0.id == peerID }),
               let service = battleService else { return }
+        // 대전을 안 하는 펫(흰 비숑)으로는 신청 자체가 막힌다.
+        guard currentPetCanBattle else {
+            showInfo(title: "대전 안 해요",
+                     text: "이 친구는 대전을 하지 않아요. 🐾\n동물보호 차원에서 비숑은 대전할 수 없어요.")
+            return
+        }
         // 방해금지 중인 상대에겐 걸지 않는다(UI 가 이미 잠갔지만 목록이 낡았을 수 있다).
         guard !peer.dnd else { return }
         // Avoid stacking battles / duplicate countdowns.
@@ -515,6 +556,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func presentIncomingChallenge(fromName: String, respond: @escaping (Bool) -> Void) {
+        // 대전을 안 하는 펫(흰 비숑)이면 조용히 거절한다 — 상대에겐 "거절됨"으로 간다.
+        // 업무 중 불필요한 말풍선/모달을 띄우지 않는다.
+        guard currentPetCanBattle else { respond(false); return }
         // Test hook: auto-accept without a modal (used to drive two real
         // instances headlessly — see README dev notes).
         if ProcessInfo.processInfo.environment["CONNORPET_BATTLE_AUTOACCEPT"] != nil {
@@ -794,6 +838,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func makeBattleMenuItem() -> NSMenuItem {
         let battleItem = NSMenuItem(title: "대전", action: nil, keyEquivalent: "")
         let submenu = NSMenu()
+        submenu.autoenablesItems = false
+        // 대전을 안 하는 펫(흰 비숑)이면 상대 목록 대신 안내만 띄운다.
+        if !currentPetCanBattle {
+            let note = NSMenuItem(title: "비숑은 대전을 하지 않아요 (동물보호)", action: nil, keyEquivalent: "")
+            note.isEnabled = false
+            submenu.addItem(note)
+            battleItem.submenu = submenu
+            return battleItem
+        }
         if battlePeers.isEmpty {
             let empty = NSMenuItem(title: "주변에 상대가 없어요", action: nil, keyEquivalent: "")
             empty.isEnabled = false
@@ -1313,19 +1366,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
 
-        // 펫 선택지(썸네일 = idle 첫 프레임)를 메뉴와 같은 순서로 만든다.
-        let pets: [FirstRunWizard.PetOption] = Self.availablePetSlugs.compactMap { slug in
-            guard let name = petDisplayNames[slug] else { return nil }
-            let image = (try? Self.loadSpriteSheet(slug: slug))?
-                .resolvedAnimation(for: .idle)?.images.first
-            return FirstRunWizard.PetOption(slug: slug, name: name, image: image)
+        // 펫 선택지(썸네일 = idle 첫 프레임)를 대분류(포켓몬/동물/메이플스토리)별로
+        // 묶는다 — 설정 창 펫 팝업과 같은 그룹 구성. 빈 카테고리도 넘겨 "준비 중"으로 뜬다.
+        let petGroups: [FirstRunWizard.PetGroup] = Self.PetCategory.allCases.map { cat in
+            let opts: [FirstRunWizard.PetOption] = Self.availablePetSlugs
+                .filter { Self.category(of: $0) == cat }
+                .compactMap { slug in
+                    guard let name = petDisplayNames[slug] else { return nil }
+                    let image = (try? Self.loadSpriteSheet(slug: slug))?
+                        .resolvedAnimation(for: .idle)?.images.first
+                    return FirstRunWizard.PetOption(slug: slug, name: name, image: image)
+                }
+            return FirstRunWizard.PetGroup(category: cat.displayName, pets: opts)
         }
         let sources = Self.availableStatusSources.map {
             FirstRunWizard.SourceOption(id: $0, name: Self.statusSourceDisplayNames[$0] ?? $0,
                                         icon: Self.sourceIcon($0))
         }
 
-        let result = FirstRunWizard.run(pets: pets, sources: sources)
+        let result = FirstRunWizard.run(petGroups: petGroups, sources: sources)
         if let slug = result.petSlug, petDisplayNames[slug] != nil {
             selectedPetSlug = slug
             Self.savePetSlug(slug)
@@ -1832,6 +1891,17 @@ extension AppDelegate: SettingsActionsDelegate {
             petDisplayNames[slug].map { (slug, $0) }
         }
     }
+
+    /// 대분류별로 묶은 펫 목록(포켓몬/동물/메이플스토리). 빈 카테고리도 포함해
+    /// 설정 창이 "준비 중"으로 노출한다 — 카테고리 체계 자체를 보이게 하려는 것.
+    var settingsPetGroups: [(category: String, pets: [(slug: String, name: String)])] {
+        Self.PetCategory.allCases.map { cat in
+            let pets = Self.availablePetSlugs
+                .filter { Self.category(of: $0) == cat }
+                .compactMap { slug in petDisplayNames[slug].map { (slug, $0) } }
+            return (cat.displayName, pets)
+        }
+    }
     var settingsSelectedPetSlug: String { selectedPetSlug }
     func settingsSelectPet(slug: String) { changePet(to: slug) }
 
@@ -1858,6 +1928,7 @@ extension AppDelegate: SettingsActionsDelegate {
     var settingsBattlePeers: [(id: String, name: String, dnd: Bool)] {
         battlePeers.map { ($0.id, $0.name, $0.dnd) }
     }
+    var settingsCurrentPetCanBattle: Bool { currentPetCanBattle }
     func settingsChallenge(peerID: String) { challenge(peerID: peerID) }
     func settingsStare(peerID: String) { stare(peerID: peerID) }
 

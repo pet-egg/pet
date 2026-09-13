@@ -15,6 +15,7 @@ Usage: python3 scripts/build_sheet.py
 import json
 import math
 import os
+import sys
 import urllib.request
 import xml.etree.ElementTree as ET
 
@@ -310,6 +311,28 @@ PETS = [
             "Custom connor-pet build: Pikachu / 피카츄 reacts to live Orca agent/project status, "
             "skinned as Pokémon status conditions — blocked/waiting=Freeze, done=Infatuation, "
             "nothing=Sleep, working=running (unchanged). Built from PokeAPI gen5 battle sprites."
+        ),
+    },
+    {
+        # 포켓몬이 아닌 절차적 펫. 도감번호가 없고, 도트를 직접 찍어 만든다
+        # (build_bichon_frames). 실제 반려견이라 **대전은 하지 않는다**(동물보호) —
+        # 그 게이팅은 앱 쪽 AppDelegate.nonBattlePetSlugs 에 있다.
+        #
+        # category="animal": 포켓몬 상태이상(얼음)이 실제 강아지한테는 어색하므로,
+        # 대기(blocked/waiting) 상태를 "앉아서 고개 갸웃 + ? 말풍선"으로 리스킨한다
+        # (build_pet 의 category 분기 참고). 대분류는 앱 메뉴 그룹(포켓몬/동물/
+        # 메이플스토리)과도 짝을 이룬다 — AppDelegate.petCategories.
+        "slug": "bichon",
+        "category": "animal",
+        "procedural": True,
+        "out_dir_name": "bichon.codex-pet",
+        "id": "bichon-bichon",
+        "display_name": "비숑 (Bichon)",
+        "description": (
+            "Custom connor-pet build: a white Bichon Frise reacts to live Orca/Claude Code "
+            "agent status, skinned as Pokémon status conditions — blocked/waiting=Freeze, "
+            "done=Infatuation, nothing=Sleep, working=running. Hand-drawn pixel art (not from "
+            "PokeAPI). Does not battle, for animal-welfare reasons."
         ),
     },
 ]
@@ -618,6 +641,267 @@ def draw_zzz(frame, t):
     return Image.alpha_composite(frame, overlay)
 
 
+def draw_question_bubble(frame, t):
+    """'?' 말풍선 — 동물(animal) 카테고리 펫의 '지시 대기' 상태 오버레이.
+
+    포켓몬은 대기 상태를 얼음(Freeze)으로 리스킨하지만, 실제 강아지한테 얼음은
+    어색하다. 대신 앉아서 고개를 갸웃한 포즈(draw_*_sitting) 위에 이 말풍선을 얹어
+    "블락됐어요, 어떻게 할까요?" 하고 주인을 기다리는 뉘앙스를 준다. Zzz·하트
+    오버레이와 같은 패턴 — 루프 위상 t 로 살짝 떠오르며 맥동한다.
+    """
+    overlay = Image.new("RGBA", frame.size, (0, 0, 0, 0))
+    d = ImageDraw.Draw(overlay)
+    scale = FRAME / FRAME_DEFAULT
+    bob = lerp_key([0.0, -3.0, 0.0, 3.0], t) * scale
+    pulse = lerp_key([0.80, 1.0, 1.0, 0.88], t)
+    a = int(240 * pulse)
+
+    # 펫이 왼쪽을 보므로 말풍선은 머리 위 오른쪽에 띄운다.
+    cx = frame.size[0] * 0.64
+    cy = frame.size[1] * 0.20 + bob
+    r = 24 * scale
+    line_w = max(1, round(2 * scale))
+    outline = (120, 132, 150, a)
+    bubble = (255, 255, 255, a)
+
+    # 꼬리(작은 원 두 개가 머리 쪽으로 내려간다) → 본체 순으로 그려 겹침 처리.
+    for frac, rr in ((1.15, 0.26), (0.85, 0.40)):
+        bx = cx - r * 0.55
+        by = cy + r * frac
+        br = r * rr
+        d.ellipse([bx - br, by - br, bx + br, by + br], fill=bubble, outline=outline, width=line_w)
+    d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=bubble, outline=outline, width=line_w)
+
+    # '?' 글자를 말풍선 중앙에.
+    font = _load_font(round(30 * scale))
+    tb = d.textbbox((0, 0), "?", font=font)
+    tw, th = tb[2] - tb[0], tb[3] - tb[1]
+    d.text((cx - tw / 2 - tb[0], cy - th / 2 - tb[1]), "?", font=font, fill=(96, 104, 124, a))
+    return Image.alpha_composite(frame, overlay)
+
+
+def _paw_print(draw, cx, cy, s, a, color):
+    """발자국 하나(위에서 본 젤리 모양). **발가락이 왼쪽(진행 방향)을 향한다** —
+    펫이 왼쪽으로 달리므로. 뒤꿈치 패드는 오른쪽, 발가락 젤리 4개는 왼쪽으로 부채꼴."""
+    r, g, b = color
+    col = (r, g, b, max(0, min(255, int(a))))
+    draw.ellipse([cx - 0.6 * s, cy - 1.9 * s, cx + 2.4 * s, cy + 1.9 * s], fill=col)  # 뒤꿈치 패드(오른쪽)
+    for tx, ty, tr in [(-1.8, -1.9, 0.85), (-2.8, -0.7, 0.8), (-2.8, 0.7, 0.8), (-1.8, 1.9, 0.85)]:
+        draw.ellipse([cx + tx * s - tr * s, cy + ty * s - tr * s,
+                      cx + tx * s + tr * s, cy + ty * s + tr * s], fill=col)          # 발가락 젤리(왼쪽 부채꼴)
+
+
+def paw_print_layer(size, t):
+    """달리기(working) 상태의 발자국 트레일 — 동물(animal) 카테고리 전용.
+
+    포켓몬은 색 변화 없이 바운스만 하는데, 동물은 그것만으론 '달리는' 느낌이 약하다.
+    펫은 **왼쪽을 보고 달리므로**, 발자국은 진행 반대쪽인 **뒤(오른쪽)로 남아 멀어지며
+    페이드아웃**해 세상이 지나가는 인상을 준다. 하트/Zzz 처럼 루프 위상 t 로 순환한다.
+
+    **펫 레이어보다 아래(뒤)에 깔린다** — build_pet 이 이 레이어 위에 펫을 얹으므로,
+    몸통과 겹치는 발자국은 몸통에 가려져 "몸 위에 발자국이 찍히는" 문제가 없다.
+    """
+    layer = Image.new("RGBA", size, (0, 0, 0, 0))
+    d = ImageDraw.Draw(layer)
+    scale = FRAME / FRAME_DEFAULT
+    W, H = size
+    color = (150, 140, 156)          # 펫 라인아트와 어울리는 흐린 토프색
+    n = 3
+    for k in range(n):
+        p = (t + k / n) % 1.0                              # 발자국 하나의 수명 0→1
+        x = W * 0.54 + p * (W * 0.34)                      # 뒤(오른쪽)로 멀어진다
+        y = H * 0.84 + (4 if k % 2 else -1) * scale        # 발밑 바닥 높이, 좌우 발 번갈아
+        s = (3.4 - 0.9 * p) * scale                        # 멀어질수록 조금 작게
+        a = 195 * math.sin(math.pi * p)                    # 생겼다가 사라진다
+        _paw_print(d, x, y, s, a, color)
+    return layer
+
+
+# ---------------------------------------------------------------------------
+# 절차적(procedural) 펫 — PokeAPI 에서 받을 수 없는 캐릭터.
+#
+# 흰색 비숑(Bichon Frise)은 포켓몬이 아니라 도감번호가 없다. 그래서 gen5 배틀
+# 스프라이트를 내려받는 대신 여기서 도트를 직접 찍어 base 프레임 몇 장을 만든다.
+# 만든 프레임은 다른 펫과 **똑같은 파이프라인**(prepare_frames → 상태별 리스킨)을
+# 그대로 탄다 — idle 바운스·달리기·얼음/하트/Zzz 오버레이가 모두 재사용된다.
+# 재실행하면 순수 함수라 똑같은 그림이 다시 나온다(원본 다운로드가 없어 더 확실).
+#
+# 방향: 다른 펫과 맞춰 **왼쪽을 보게** 그린다(뒤집지 않은 프레임 = running-left).
+_BICHON_W, _BICHON_H = 84, 74
+_FLUFF = (252, 252, 254, 255)       # 흰 털
+_FLUFF_RIM = (198, 205, 218, 255)   # 털 가장자리(도트 외곽선 역할)
+_FLUFF_SHADE = (223, 228, 238, 160) # 배 아래 그림자
+_EAR = (232, 226, 240, 255)         # 살짝 라일락빛 늘어진 귀
+_EAR_RIM = (204, 196, 220, 255)
+_EYE = (54, 48, 60, 255)
+_EYE_HI = (255, 255, 255, 235)
+_NOSE = (46, 42, 52, 255)
+_NOSE_HI = (120, 112, 128, 210)
+_MOUTH = (150, 140, 156, 255)
+_BLUSH = (255, 196, 202, 90)
+
+
+def _scallop(draw, cx, cy, rx, ry, n, r, fill):
+    """타원 둘레에 작은 원들을 돌려 찍어 '뭉게구름' 같은 복슬복슬한 외곽을 만든다."""
+    for k in range(n):
+        a = 2 * math.pi * k / n
+        x = cx + rx * math.cos(a)
+        y = cy + ry * math.sin(a)
+        draw.ellipse([x - r, y - r, x + r, y + r], fill=fill)
+    draw.ellipse([cx - rx, cy - ry, cx + rx, cy + ry], fill=fill)
+
+
+def _fluff(draw, cx, cy, rx, ry, n=11, bump=6.5):
+    """가장자리 rim(외곽선) 한 겹을 깔고 그 위에 흰 털을 얹어 1~2px 테두리를 낸다."""
+    _scallop(draw, cx, cy, rx + 2, ry + 2, n, bump + 1.6, _FLUFF_RIM)
+    _scallop(draw, cx, cy, rx, ry, n, bump, _FLUFF)
+
+
+def _leg(draw, x, y):
+    draw.ellipse([x - 6, y - 8, x + 6, y + 8], fill=_FLUFF_RIM)
+    draw.ellipse([x - 5, y - 7, x + 5, y + 7], fill=_FLUFF)
+
+
+def _eye(draw, x, y, blink):
+    if blink:
+        draw.line([x - 3, y, x + 3, y], fill=_EYE, width=2)
+        return
+    draw.ellipse([x - 3.2, y - 3.7, x + 3.2, y + 3.7], fill=_EYE)
+    draw.ellipse([x - 2.0, y - 2.8, x - 0.2, y - 1.0], fill=_EYE_HI)
+
+
+def draw_bichon(t, blink):
+    """왼쪽을 보는 흰 비숑 한 프레임. t 는 루프 위상[0,1), blink 는 눈 깜빡임."""
+    img = Image.new("RGBA", (_BICHON_W, _BICHON_H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+
+    sway = math.sin(2 * math.pi * t)        # 귀·꼬리 흔들림
+    tail_x = 68 + 2 * sway
+    tail_y = 40 - 1.5 * sway
+
+    # 뒤에서 앞으로: 꼬리 → 뒤쪽 귀 → 다리 → 몸통 → 그림자 → 머리 → 앞쪽 귀 → 얼굴
+    _fluff(d, tail_x, tail_y, 8, 8, n=9, bump=5.5)                       # 꼬리 뭉치
+
+    d.ellipse([38, 30 + sway, 50, 46 + sway], fill=_EAR_RIM)             # 뒤쪽(먼) 귀
+    d.ellipse([39, 31 + sway, 49, 45 + sway], fill=_EAR)
+
+    for lx in (28, 40, 52):                                             # 다리
+        _leg(d, lx, 60)
+
+    _fluff(d, 48, 46, 21, 16)                                           # 몸통
+
+    d.ellipse([34, 50, 62, 60], fill=_FLUFF_SHADE)                      # 배 아래 그림자
+
+    _fluff(d, 30, 30, 17, 16)                                          # 머리
+
+    d.ellipse([15, 34 - sway, 27, 52 - sway], fill=_EAR_RIM)            # 앞쪽(가까운) 귀
+    d.ellipse([16, 35 - sway, 26, 51 - sway], fill=_EAR)
+
+    _fluff(d, 19, 33, 6, 6, n=8, bump=4.2)                             # 주둥이 털뭉치
+
+    d.ellipse([25, 30, 33, 37], fill=_BLUSH)                           # 볼터치
+    _eye(d, 24, 28, blink)                                             # 두 눈(3/4 앵글)
+    _eye(d, 34, 29, blink)
+
+    d.ellipse([13, 32, 19, 37], fill=_NOSE)                           # 코
+    d.ellipse([13.6, 32.6, 16, 34.4], fill=_NOSE_HI)
+    d.line([16, 37, 19, 40], fill=_MOUTH, width=1)                    # 입
+    d.line([16, 37, 13, 40], fill=_MOUTH, width=1)
+
+    return img
+
+
+def build_bichon_frames():
+    n = 12
+    frames = []
+    for i in range(n):
+        t = i / n
+        # 12프레임 중 한 프레임만 눈을 감아 이따금 깜빡이게 한다.
+        blink = (i == 6)
+        frames.append(draw_bichon(t, blink))
+    return frames
+
+
+# 앉아서 고개를 갸웃한 비숑 — 동물 카테고리의 대기(blocked/waiting) 포즈.
+# 캔버스를 base(74)보다 높게(92) 잡아 앉은 몸통·앞다리가 잘리지 않게 하고,
+# 머리(귀·얼굴)만 별도 레이어에 그려 목을 축으로 살짝 회전해 '갸웃'을 만든다.
+# 이후 build_pet 이 prepare_frames 로 base 와 같은 파이프라인(정수배 확대)에 태운다.
+_BICHON_SIT_H = 92
+
+
+def draw_bichon_sitting(t, blink, tilt_deg):
+    """앉아서 고개를 갸웃한 흰 비숑 한 프레임(왼쪽을 봄)."""
+    img = Image.new("RGBA", (_BICHON_W, _BICHON_SIT_H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+
+    sway = math.sin(2 * math.pi * t)
+
+    # 꼬리 — 앉은 자세라 엉덩이 뒤(오른쪽)에 말려 있다.
+    _fluff(d, 67, 62 + 1.5 * sway, 8, 8, n=9, bump=5.5)
+
+    # 몸통 — 세로로 선 복슬 오벌(엉덩이가 바닥에 닿음).
+    _fluff(d, 46, 54, 18, 21)
+
+    # 바닥에 닿는 그림자.
+    d.ellipse([30, 78, 62, 88], fill=_FLUFF_SHADE)
+
+    # 앞다리 두 개 — 몸 앞으로 곧게 내려 앉은 자세.
+    _leg(d, 34, 74)
+    _leg(d, 45, 75)
+
+    # ── 머리(귀·얼굴)를 별도 레이어에 그려 목(pivot)을 축으로 회전 → 고개 갸웃 ──
+    head = Image.new("RGBA", (_BICHON_W, _BICHON_SIT_H), (0, 0, 0, 0))
+    hd = ImageDraw.Draw(head)
+
+    hd.ellipse([38, 30, 48, 46], fill=_EAR_RIM)          # 뒤쪽(먼) 귀
+    hd.ellipse([39, 31, 47, 45], fill=_EAR)
+
+    _fluff(hd, 30, 30, 17, 16)                           # 머리 뭉치
+
+    hd.ellipse([15, 32, 27, 52], fill=_EAR_RIM)          # 앞쪽(가까운) 늘어진 귀
+    hd.ellipse([16, 33, 26, 51], fill=_EAR)
+
+    _fluff(hd, 19, 33, 6, 6, n=8, bump=4.2)              # 주둥이 털뭉치
+
+    hd.ellipse([25, 30, 33, 37], fill=_BLUSH)            # 볼터치
+    _eye(hd, 24, 28, blink)                              # 두 눈(3/4 앵글)
+    _eye(hd, 34, 29, blink)
+
+    hd.ellipse([13, 32, 19, 37], fill=_NOSE)             # 코
+    hd.ellipse([13.6, 32.6, 16, 34.4], fill=_NOSE_HI)
+    hd.line([16, 37, 19, 40], fill=_MOUTH, width=1)      # 입
+    hd.line([16, 37, 13, 40], fill=_MOUTH, width=1)
+
+    head = head.rotate(tilt_deg, resample=Image.BICUBIC, center=(34, 44))
+    img.alpha_composite(head)
+    return img
+
+
+def build_bichon_waiting_frames(n):
+    """대기 상태용 앉은 포즈 n장. 고개는 기본 기울기에 완만한 흔들림을 더하고,
+    가운데 한 프레임만 눈을 깜빡인다."""
+    frames = []
+    for i in range(n):
+        t = i / n
+        blink = (i == n // 2)
+        tilt = 12 + 3 * math.sin(2 * math.pi * t)
+        frames.append(draw_bichon_sitting(t, blink, tilt))
+    return frames
+
+
+# 절차적 펫의 base 프레임 생성기. build_pet 이 pet["procedural"] 일 때 여기서 뽑는다.
+# (build_bichon_frames 가 위에 정의된 뒤라야 하므로 여기 둔다.)
+PROCEDURAL_BUILDERS = {
+    "bichon": build_bichon_frames,
+}
+
+# 동물 카테고리의 대기(waiting) 포즈 생성기. 슬러그별로 앉은-갸웃 포즈를 n장 돌려준다.
+# 여기 없는 동물은 base 포즈를 고정한 채 말풍선만 얹는 것으로 폴백한다(build_pet).
+ANIMAL_WAITING_BUILDERS = {
+    "bichon": build_bichon_waiting_frames,
+}
+
+
 def compose_and_write(pet, rows, extra_manifest, row_order, frame):
     """rows(행 이름→{frames,durations}) 를 스프라이트시트+매니페스트로 굽고
     두 곳(있으면 .codex-pet, 항상 앱 리소스)에 쓴다. gen5 파이프라인과 피카츄
@@ -832,14 +1116,19 @@ def build_pet(pet):
     global FRAME, SPRITE_TARGET
     FRAME = FRAME_BY_PET.get(pet["slug"], FRAME_DEFAULT)
     SPRITE_TARGET = SPRITE_TARGET_BY_PET.get(pet["slug"], SPRITE_TARGET_DEFAULT)
-    dex_id = pet["dex_id"]
-    front_url = f"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated/{dex_id}.gif"
-    front_path = fetch(front_url, os.path.join(CACHE_DIR, f"{dex_id}_front.gif"))
 
-    front_raw = load_frames(front_path)
+    if pet.get("procedural"):
+        # 포켓몬이 아니라 도감번호가 없는 펫(흰 비숑 등). PokeAPI 대신 도트를 직접
+        # 찍어 base 프레임을 만든다. 이후 파이프라인은 gen5 펫과 완전히 동일하다.
+        front_raw = PROCEDURAL_BUILDERS[pet["slug"]]()
+    else:
+        dex_id = pet["dex_id"]
+        front_url = f"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated/{dex_id}.gif"
+        front_path = fetch(front_url, os.path.join(CACHE_DIR, f"{dex_id}_front.gif"))
+        front_raw = load_frames(front_path)
 
-    # 원본은 55프레임짜리 애니메이션 GIF다. 전 프레임 공통 bbox 로 잘라서
-    # 프레임 간 상대 움직임(호흡·바운스)을 보존하고, 정수배로만 확대한다.
+    # 원본은 55프레임짜리 애니메이션 GIF다(절차적 펫은 위에서 만든 12장). 전 프레임
+    # 공통 bbox 로 잘라서 프레임 간 상대 움직임(호흡·바운스)을 보존하고, 정수배로만 확대한다.
     front_base = prepare_frames(front_raw)
 
     rows = {}
@@ -909,25 +1198,49 @@ def build_pet(pet):
             tinted, dx=round(6 * math.sin(6 * math.pi * t)), dy=round(2 + 4 * t)))
     rows["failed"] = {"frames": fail_frames, "durations": durs}
 
-    # blocked/waiting wins the priority check immediately, so it's reskinned
-    # as Freeze: held on one pose (frozen == not moving) and encased in an
-    # angular ice crystal, with a faint shimmer across the loop instead of
-    # actual motion.
+    # blocked/waiting wins the priority check immediately, so it's reskinned per
+    # category. 포켓몬은 Freeze(얼음): 포즈를 프레임0에 고정하고 각진 얼음 결정으로
+    # 감싼 뒤 반짝임만 흐르게 한다. 동물(animal)은 얼음이 어색하므로 대신 "앉아서
+    # 고개를 갸웃 + ? 말풍선"으로 지시 대기를 표현한다(draw_bichon_sitting +
+    # draw_question_bubble). 대분류는 AppDelegate.petCategories 와 짝을 이룬다.
     n, durs = spec("waiting")
-    freeze_pose = paste_centered(front_base[0])
-    icy = tint(desaturate(freeze_pose, 0.35, 1.1), (170, 215, 250), 0.6)
-    rows["waiting"] = {
-        "frames": [draw_ice_crystal(icy, shimmer=lerp_key([0.85, 1.0, 1.0, 0.85], i / n))
-                   for i in range(n)],
-        "durations": durs,
-    }
+    if pet.get("category") == "animal":
+        sit_builder = ANIMAL_WAITING_BUILDERS.get(pet["slug"])
+        if sit_builder:
+            sit_base = prepare_frames(sit_builder(n))
+            base_frames = [paste_centered(sit_base[i % len(sit_base)]) for i in range(n)]
+        else:
+            # 전용 앉은 포즈가 없는 동물: base 포즈를 고정한 채 말풍선만 얹는다.
+            base_frames = [paste_centered(front_base[0]) for _ in range(n)]
+        rows["waiting"] = {
+            "frames": [draw_question_bubble(base_frames[i], i / n) for i in range(n)],
+            "durations": durs,
+        }
+    else:
+        freeze_pose = paste_centered(front_base[0])
+        icy = tint(desaturate(freeze_pose, 0.35, 1.1), (170, 215, 250), 0.6)
+        rows["waiting"] = {
+            "frames": [draw_ice_crystal(icy, shimmer=lerp_key([0.85, 1.0, 1.0, 0.85], i / n))
+                       for i in range(n)],
+            "durations": durs,
+        }
 
+    # running == "작업 중"(working). 포켓몬은 색 변화 없이 위아래 바운스만 한다.
+    # 동물(animal)은 바운스만으론 달리는 느낌이 약해, 뒤로 발자국 트레일을 남긴다.
+    # 발자국 레이어를 **펫보다 아래**에 깔아(ground 위에 펫을 얹음) 몸통과 겹치는
+    # 발자국이 몸통에 가려지게 한다 — 몸 위에 발자국이 찍히지 않는다.
     n, durs = spec("running")
-    rows["running"] = {
-        "frames": [paste_centered(s, dy=round(-5 - 5 * math.cos(2 * math.pi * i / n)))
-                   for i, s in enumerate(sample(front_base, n))],
-        "durations": durs,
-    }
+    is_animal = pet.get("category") == "animal"
+    run_frames = []
+    for i, s in enumerate(sample(front_base, n)):
+        t = i / n
+        pet_layer = paste_centered(s, dy=round(-5 - 5 * math.cos(2 * math.pi * t)))
+        if is_animal:
+            ground = paw_print_layer(pet_layer.size, t)
+            run_frames.append(Image.alpha_composite(ground, pet_layer))
+        else:
+            run_frames.append(pet_layer)
+    rows["running"] = {"frames": run_frames, "durations": durs}
 
     # done is the completion state, reskinned as Infatuation: a warm pink
     # tint (replacing the old gold) plus floating hearts instead of just a
@@ -990,7 +1303,16 @@ def build_pet(pet):
 
 
 def main():
-    for pet in PETS:
+    # 인자로 슬러그를 주면 그 펫만 다시 굽는다(예: `build_sheet.py bichon`).
+    # 절차적 펫은 네트워크가 필요 없어 오프라인에서도 이렇게 개별 생성할 수 있다.
+    # 인자가 없으면 예전처럼 전부 굽는다.
+    wanted = set(sys.argv[1:])
+    pets = [p for p in PETS if p["slug"] in wanted] if wanted else PETS
+    if wanted:
+        missing = wanted - {p["slug"] for p in PETS}
+        if missing:
+            raise SystemExit(f"unknown pet slug(s): {', '.join(sorted(missing))}")
+    for pet in pets:
         build_pet(pet)
 
     # Old flat Resources/{spritesheet.png,pet.json} layout is superseded by

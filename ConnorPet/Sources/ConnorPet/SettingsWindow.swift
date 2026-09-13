@@ -7,6 +7,9 @@ import CoreImage
 protocol SettingsActionsDelegate: AnyObject {
     // 펫
     var settingsOrderedPets: [(slug: String, name: String)] { get }
+    /// 대분류(포켓몬/동물/메이플스토리)별로 묶은 펫 목록. 빈 카테고리도 포함되며
+    /// 팝업에서 "준비 중"으로 노출한다.
+    var settingsPetGroups: [(category: String, pets: [(slug: String, name: String)])] { get }
     var settingsSelectedPetSlug: String { get }
     func settingsSelectPet(slug: String)
 
@@ -47,6 +50,8 @@ protocol SettingsActionsDelegate: AnyObject {
     /// 이 맥에 쌓인 대전 전적 한 줄. 예: "12승 8패 · 승률 60%"
     var settingsBattleRecord: String { get }
     var settingsBattlePeers: [(id: String, name: String, dnd: Bool)] { get }
+    /// 지금 고른 펫이 대전할 수 있는지. false(흰 비숑)면 신청 버튼 대신 안내를 띄운다.
+    var settingsCurrentPetCanBattle: Bool { get }
     func settingsChallenge(peerID: String)
     func settingsStare(peerID: String)
 
@@ -302,15 +307,38 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     // MARK: - Row builders
 
     private func petRows(_ d: SettingsActionsDelegate) -> [RowSpec] {
-        // 펫 선택 (팝업)
+        // 펫 선택 (팝업) — 대분류(포켓몬/동물/메이플스토리)별로 묶는다. 각 그룹 앞에
+        // 선택 불가한 헤더 항목을, 펫 항목은 한 단계 들여쓰기(indentationLevel)해
+        // 붙인다. 빈 카테고리는 "(준비 중)"으로 노출해 카테고리 체계를 보여 준다.
         let popup = NSPopUpButton(frame: .zero, pullsDown: false)
-        for pet in d.settingsOrderedPets {
-            let item = NSMenuItem(title: pet.name, action: nil, keyEquivalent: "")
-            item.representedObject = pet.slug
-            popup.menu?.addItem(item)
+        let menu = popup.menu!
+        var firstGroup = true
+        for group in d.settingsPetGroups {
+            if !firstGroup { menu.addItem(.separator()) }
+            firstGroup = false
+            let header = NSMenuItem(title: group.category, action: nil, keyEquivalent: "")
+            header.isEnabled = false
+            header.attributedTitle = NSAttributedString(string: group.category, attributes: [
+                .font: NSFont.systemFont(ofSize: 11, weight: .semibold),
+                .foregroundColor: NSColor.secondaryLabelColor,
+            ])
+            menu.addItem(header)
+            if group.pets.isEmpty {
+                let soon = NSMenuItem(title: "준비 중", action: nil, keyEquivalent: "")
+                soon.isEnabled = false
+                soon.indentationLevel = 1
+                menu.addItem(soon)
+            } else {
+                for pet in group.pets {
+                    let item = NSMenuItem(title: pet.name, action: nil, keyEquivalent: "")
+                    item.representedObject = pet.slug
+                    item.indentationLevel = 1
+                    menu.addItem(item)
+                }
+            }
         }
-        if let idx = d.settingsOrderedPets.firstIndex(where: { $0.slug == d.settingsSelectedPetSlug }) {
-            popup.selectItem(at: idx)
+        if let item = menu.items.first(where: { ($0.representedObject as? String) == d.settingsSelectedPetSlug }) {
+            popup.select(item)
         }
         popup.target = self
         popup.action = #selector(petPopupChanged(_:))
@@ -515,6 +543,8 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     }
 
     private func battleRows(_ d: SettingsActionsDelegate) -> [RowSpec] {
+        let canBattle = d.settingsCurrentPetCanBattle
+
         // 방해금지 모드 — 켜면 남이 거는 대전·노려보기를 받지 않는다. 섹션 맨 위에 둬,
         // 상대 목록보다 먼저 눈에 들어오게 한다.
         let dnd = makeSwitch(on: d.settingsDNDEnabled, action: #selector(dndToggled(_:)))
@@ -531,9 +561,16 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
 
         let peers = d.settingsBattlePeers
         guard !peers.isEmpty else {
-            rows.append(RowSpec(title: "주변에 상대가 없어요",
-                                subtitle: "같은 Wi-Fi의 다른 ConnorPet을 찾는 중",
-                                control: nil, dimmed: true))
+            // 대전을 안 하는 펫(흰 비숑)은 상대가 없을 때 그 이유를 밝힌다.
+            if !canBattle {
+                rows.append(RowSpec(title: "비숑은 대전을 하지 않아요",
+                                    subtitle: "동물보호 차원에서 대전할 수 없어요 🐾",
+                                    control: nil, dimmed: true))
+            } else {
+                rows.append(RowSpec(title: "주변에 상대가 없어요",
+                                    subtitle: "같은 Wi-Fi의 다른 ConnorPet을 찾는 중",
+                                    control: nil, dimmed: true))
+            }
             return rows
         }
         for (i, peer) in peers.enumerated() {
@@ -558,13 +595,16 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             stack.orientation = .horizontal
             stack.spacing = 8
 
-            let challenge = makeButton(title: "신청", action: #selector(challengePressed(_:)))
-            challenge.tag = i
+            // 대전을 안 하는 펫(흰 비숑)이면 신청 버튼은 빼고 노려보기만 남긴다.
+            if canBattle {
+                let challenge = makeButton(title: "신청", action: #selector(challengePressed(_:)))
+                challenge.tag = i
+                stack.addArrangedSubview(challenge)
+            }
             let stare = makeButton(title: "노려보기", action: #selector(starePressed(_:)))
             stare.tag = i
             peerButtonMap[i] = peer.id
 
-            stack.addArrangedSubview(challenge)
             stack.addArrangedSubview(stare)
             stack.layoutSubtreeIfNeeded()
             stack.frame = NSRect(origin: .zero, size: stack.fittingSize)

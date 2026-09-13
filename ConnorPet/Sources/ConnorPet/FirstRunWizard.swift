@@ -14,13 +14,16 @@ import AppKit
 /// default.
 enum FirstRunWizard {
     struct PetOption { let slug: String; let name: String; let image: NSImage? }
+    /// 펫 대분류 한 묶음(포켓몬/동물/메이플스토리). 마법사 1단계가 이 그룹별로
+    /// 헤더 + 썸네일 그리드를 그린다. 아직 펫이 없는 그룹은 "준비 중"으로 나온다.
+    struct PetGroup { let category: String; let pets: [PetOption] }
     struct SourceOption { let id: String; let name: String; let icon: NSImage? }
     struct Result { let petSlug: String?; let sourceID: String? }
 
-    static func run(pets: [PetOption], sources: [SourceOption]) -> Result {
+    static func run(petGroups: [PetGroup], sources: [SourceOption]) -> Result {
         // Held in a local so the controller (buttons' weak target) stays alive
         // for the whole modal loop.
-        let controller = FirstRunWizardController(pets: pets, sources: sources)
+        let controller = FirstRunWizardController(petGroups: petGroups, sources: sources)
         return controller.runModal()
     }
 }
@@ -33,7 +36,8 @@ private final class WizardPanel: NSPanel {
 }
 
 private final class FirstRunWizardController: NSObject {
-    private let pets: [FirstRunWizard.PetOption]
+    private let petGroups: [FirstRunWizard.PetGroup]
+    private let pets: [FirstRunWizard.PetOption]   // 평탄화(버튼 tag → 펫 조회용)
     private let sources: [FirstRunWizard.SourceOption]
     private var panel: NSPanel?
     private var chosenPet: String?
@@ -44,16 +48,40 @@ private final class FirstRunWizardController: NSObject {
     private let cell = NSSize(width: 96, height: 100)
     private let pad: CGFloat = 24
     private let titleH: CGFloat = 34
+    // 대분류 그룹 레이아웃.
+    private let headerH: CGFloat = 20      // 그룹 헤더("포켓몬" 등) 높이
+    private let headerGap: CGFloat = 6     // 헤더 → 그리드 간격
+    private let groupGap: CGFloat = 16     // 그룹 사이 간격
+    private let emptyRowH: CGFloat = 40    // 빈 그룹("준비 중") 높이
 
-    init(pets: [FirstRunWizard.PetOption], sources: [FirstRunWizard.SourceOption]) {
-        self.pets = pets
+    init(petGroups: [FirstRunWizard.PetGroup], sources: [FirstRunWizard.SourceOption]) {
+        self.petGroups = petGroups
+        self.pets = petGroups.flatMap { $0.pets }
         self.sources = sources
     }
 
-    func runModal() -> FirstRunWizard.Result {
-        let rows = Int(ceil(Double(pets.count) / Double(cols)))
+    /// 그룹(헤더 + 그리드/빈 표시)을 모두 쌓았을 때 필요한 펫 페이지 크기.
+    private func petPageSize() -> NSSize {
         let width = pad * 2 + cell.width * CGFloat(cols)
-        let height = pad + titleH + CGFloat(rows) * cell.height + pad
+        var content: CGFloat = 0
+        for g in petGroups {
+            let gridH: CGFloat
+            if g.pets.isEmpty {
+                gridH = emptyRowH
+            } else {
+                let rows = Int(ceil(Double(g.pets.count) / Double(cols)))
+                gridH = CGFloat(rows) * cell.height
+            }
+            content += headerH + headerGap + gridH + groupGap
+        }
+        let height = pad + titleH + content + pad
+        return NSSize(width: width, height: height)
+    }
+
+    func runModal() -> FirstRunWizard.Result {
+        let size = petPageSize()
+        let width = size.width
+        let height = size.height
 
         let panel = WizardPanel(
             contentRect: NSRect(x: 0, y: 0, width: width, height: height),
@@ -83,24 +111,57 @@ private final class FirstRunWizardController: NSObject {
         card.addSubview(makeTitle("펫을 골라주세요", size: size))
         card.addSubview(makeStep("1 / 2", size: size))
 
-        let rows = Int(ceil(Double(pets.count) / Double(cols)))
-        let gridTop = size.height - pad - titleH
-        for (i, pet) in pets.enumerated() {
-            let col = i % cols, row = i / cols
-            let x = pad + CGFloat(col) * cell.width
-            // Fill top-to-bottom: row 0 is the topmost.
-            let y = gridTop - CGFloat(row + 1) * cell.height
-            let button = WizardButton(frame: NSRect(x: x, y: y, width: cell.width, height: cell.height))
-            button.configureCell(image: pet.image, title: pet.name)
-            button.tag = i
-            button.target = self
-            button.action = #selector(petPicked(_:))
-            card.addSubview(button)
+        // 대분류(포켓몬/동물/메이플스토리)별로 헤더 + 썸네일 그리드를 위에서 아래로
+        // 쌓는다. 버튼 tag 는 평탄화한 pets 순서와 맞도록 그룹 순회하며 증가시킨다.
+        var y = size.height - pad - titleH   // 내용 영역 상단
+        var tag = 0
+        for group in petGroups {
+            card.addSubview(makeGroupHeader(group.category, top: y, width: size.width))
+            y -= headerH + headerGap
+
+            if group.pets.isEmpty {
+                card.addSubview(makeEmptyNote("준비 중", top: y, width: size.width))
+                y -= emptyRowH + groupGap
+                continue
+            }
+
+            let rows = Int(ceil(Double(group.pets.count) / Double(cols)))
+            for (i, pet) in group.pets.enumerated() {
+                let col = i % cols, row = i / cols
+                let x = pad + CGFloat(col) * cell.width
+                let by = y - CGFloat(row + 1) * cell.height
+                let button = WizardButton(frame: NSRect(x: x, y: by, width: cell.width, height: cell.height))
+                button.configureCell(image: pet.image, title: pet.name)
+                button.tag = tag
+                tag += 1
+                button.target = self
+                button.action = #selector(petPicked(_:))
+                card.addSubview(button)
+            }
+            y -= CGFloat(rows) * cell.height + groupGap
         }
-        _ = rows
+
         installEscDismiss(on: card)
         panel?.contentView = card
         panel?.makeFirstResponder(card)
+    }
+
+    /// 왼쪽 정렬한 대분류 헤더 라벨(어두운 카드 위 흐린 회색).
+    private func makeGroupHeader(_ text: String, top: CGFloat, width: CGFloat) -> NSTextField {
+        let label = NSTextField(labelWithString: text)
+        label.font = .systemFont(ofSize: 12, weight: .semibold)
+        label.textColor = NSColor(calibratedWhite: 0.62, alpha: 1)
+        label.frame = NSRect(x: pad + 2, y: top - headerH, width: width - pad * 2, height: headerH)
+        return label
+    }
+
+    /// 아직 펫이 없는 그룹 표시("준비 중").
+    private func makeEmptyNote(_ text: String, top: CGFloat, width: CGFloat) -> NSTextField {
+        let label = NSTextField(labelWithString: text)
+        label.font = .systemFont(ofSize: 12, weight: .regular)
+        label.textColor = NSColor(calibratedWhite: 0.45, alpha: 1)
+        label.frame = NSRect(x: pad + 4, y: top - emptyRowH + 10, width: width - pad * 2, height: 20)
+        return label
     }
 
     private func showSourcePage() {
