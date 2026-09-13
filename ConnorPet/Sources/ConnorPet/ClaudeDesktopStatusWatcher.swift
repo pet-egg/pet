@@ -369,7 +369,9 @@ final class ClaudeAXProbe {
         if let previous, !previous.isEmpty, previous != current, !AXIsProcessTrusted() {
             resetStaleAccessibilityGrant(previous: previous, current: current)
         }
-        ensurePermissionPrompted()
+        // Registration + the actionable "손쉬운 사용을 켜 주세요" prompt is driven by
+        // `AppDelegate` now (it can re-ask on every launch/source-switch while the
+        // grant is missing, which the one-shot system dialog can't).
     }
 
     /// Remove our own stale Accessibility record so macOS will prompt again.
@@ -395,14 +397,6 @@ final class ClaudeAXProbe {
                     .data(using: .utf8)!
             )
         }
-    }
-
-    /// If the app isn't trusted for Accessibility yet, show the system prompt
-    /// once. Safe to call repeatedly; only prompts while untrusted.
-    func ensurePermissionPrompted() {
-        guard !AXIsProcessTrusted() else { return }
-        let opts = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
-        _ = AXIsProcessTrustedWithOptions(opts)
     }
 
     /// A `Sample` when we can read the tree; `nil` when we can't tell (no

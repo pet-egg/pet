@@ -1212,6 +1212,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         newWatcher.start()
         watcher = newWatcher
+
+        // Claude Desktop 소스는 손쉬운 사용(Accessibility) 권한이 있어야 상태를 읽는다.
+        // 권한이 없으면 펫이 반응하지 못하므로, 이 소스로 켜질 때(런치·마법사 직후·
+        // 소스 전환)마다 권한을 요청한다 — 안 켜져 있으면 매번.
+        promptAccessibilityIfNeeded(for: source)
+    }
+
+    /// Claude Desktop 소스가 활성인데 손쉬운 사용 권한이 없으면, 설정으로 안내하는
+    /// 액션 알림을 띄운다. macOS 기본 권한 요청 다이얼로그는 TCC 기록이 한 번 생기면
+    /// 다시 안 뜨는 **일회성**이라 "안 켜져 있으면 매번" 요구를 못 채운다 — 그래서
+    /// 우리 알림으로 대체한다(권한이 이미 있으면 아무것도 안 함).
+    private func promptAccessibilityIfNeeded(for source: String) {
+        guard source == "claude-desktop", !AccessibilityAccess.isGranted() else { return }
+        // 헤드리스 셀프테스트/설정 PNG 덤프 실행에선 모달로 막지 않는다.
+        let env = ProcessInfo.processInfo.environment
+        if env["CONNORPET_SELFTEST"] != nil || env["CONNORPET_DEBUG_SETTINGS"] != nil { return }
+
+        let alert = NSAlert()
+        alert.messageText = "손쉬운 사용 권한이 필요합니다"
+        alert.informativeText = """
+        펫이 Claude Desktop의 상태(생성 중·완료·승인 대기)를 읽으려면 손쉬운 사용(Accessibility) 권한이 필요합니다. 권한이 없으면 펫이 Claude Desktop에 반응하지 못합니다.
+
+        앱을 업데이트하면 이 권한이 자동으로 풀릴 수 있습니다(서명 방식 때문). ‘손쉬운 사용 설정 열기’를 눌러 목록에서 pet을 켜 주세요.
+        """
+        alert.addButton(withTitle: "손쉬운 사용 설정 열기")
+        alert.addButton(withTitle: "나중에")
+        NSApp.activate(ignoringOtherApps: true)
+        if alert.runModal() == .alertFirstButtonReturn {
+            // 목록에 pet 을 등록(토글이 뜨도록)하고 해당 설정 창을 연다.
+            AccessibilityAccess.registerAndPrompt()
+            AccessibilityAccess.openSettings()
+        }
     }
 
     // MARK: - First-run wizard
