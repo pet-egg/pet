@@ -20,6 +20,8 @@ protocol SettingsActionsDelegate: AnyObject {
     func settingsSetEvolutionEnabled(_ on: Bool)
     var settingsBarAlwaysVisible: Bool { get }
     func settingsSetBarAlwaysVisible(_ on: Bool)
+    var settingsDNDEnabled: Bool { get }
+    func settingsSetDND(_ on: Bool)
 
     // 경험치
     func settingsResetAllXP()
@@ -44,7 +46,7 @@ protocol SettingsActionsDelegate: AnyObject {
     // 대전 / 노려보기 (같은 wifi 상대)
     /// 이 맥에 쌓인 대전 전적 한 줄. 예: "12승 8패 · 승률 60%"
     var settingsBattleRecord: String { get }
-    var settingsBattlePeers: [(id: String, name: String)] { get }
+    var settingsBattlePeers: [(id: String, name: String, dnd: Bool)] { get }
     func settingsChallenge(peerID: String)
     func settingsStare(peerID: String)
 
@@ -513,12 +515,19 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     }
 
     private func battleRows(_ d: SettingsActionsDelegate) -> [RowSpec] {
+        // 방해금지 모드 — 켜면 남이 거는 대전·노려보기를 받지 않는다. 섹션 맨 위에 둬,
+        // 상대 목록보다 먼저 눈에 들어오게 한다.
+        let dnd = makeSwitch(on: d.settingsDNDEnabled, action: #selector(dndToggled(_:)))
+        var rows = [RowSpec(title: "방해금지 모드",
+                            subtitle: "켜면 남이 대전·노려보기를 걸 수 없어요 (상대에겐 '방해금지 중'으로 보임)",
+                            control: dnd)]
+
         // 전적은 상대가 없어도 보여 준다 — 지난 성적을 보려고 여는 자리이기도 하다.
         let reward = Self.decimal.string(from: NSNumber(value: Int(BattleRecord.winReward)))
             ?? "\(Int(BattleRecord.winReward))"
-        var rows = [RowSpec(title: "대전 전적",
+        rows.append(RowSpec(title: "대전 전적",
                             subtitle: "\(d.settingsBattleRecord) · 이기면 +\(reward) EXP",
-                            control: nil, dimmed: true)]
+                            control: nil, dimmed: true))
 
         let peers = d.settingsBattlePeers
         guard !peers.isEmpty else {
@@ -528,6 +537,23 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             return rows
         }
         for (i, peer) in peers.enumerated() {
+            // 방해금지 중인 상대는 목록엔 그대로 두되(노출), 버튼을 잠그고 이유를 밝힌다.
+            if peer.dnd {
+                let challenge = makeButton(title: "신청", action: #selector(challengePressed(_:)))
+                let stare = makeButton(title: "노려보기", action: #selector(starePressed(_:)))
+                challenge.isEnabled = false
+                stare.isEnabled = false
+                let stack = NSStackView(views: [challenge, stare])
+                stack.orientation = .horizontal
+                stack.spacing = 8
+                stack.layoutSubtreeIfNeeded()
+                stack.frame = NSRect(origin: .zero, size: stack.fittingSize)
+                rows.append(RowSpec(title: peer.name,
+                                    subtitle: "방해금지 중 — 상호작용을 받지 않아요",
+                                    control: stack, dimmed: true))
+                continue
+            }
+
             let stack = NSStackView()
             stack.orientation = .horizontal
             stack.spacing = 8
@@ -546,6 +572,10 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             rows.append(RowSpec(title: peer.name, control: stack))
         }
         return rows
+    }
+
+    @objc private func dndToggled(_ sender: NSSwitch) {
+        delegate?.settingsSetDND(sender.state == .on)
     }
 
     private func quitRow() -> RowSpec {
