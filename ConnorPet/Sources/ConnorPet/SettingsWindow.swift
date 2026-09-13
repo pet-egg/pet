@@ -88,24 +88,33 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
 
     // MARK: - Show / refresh
 
+    /// show() 는 **항상 메뉴 추적 루프 안에서** 불린다 — 메뉴바 "설정…"(상태바
+    /// NSMenu)이든, 펫 우클릭 "설정…"(NSMenu.popUpContextMenu)이든. 이 사실이 이
+    /// 메서드의 두 규칙을 만든다:
+    ///
+    /// 1) **라이브 컨트롤을 그 자리에서 헐지 않는다.** rebuildContent 의
+    ///    `removeFromSuperview` 가 아직 추적 중이던 NSPopUpButton 을 헐면 AppKit 이
+    ///    죽은 객체를 건드려 EXC_BAD_ACCESS 로 죽는다(e6dbeea 의 "펫 선택 크래시"·
+    ///    "doc 으로 연 뒤 우클릭으로 다시 열면 꺼지는" 크래시). 그래서 **처음
+    ///    만들 때만**(doc 이 비어 헐 컨트롤이 없을 때만) 그 자리에서 그리고, 이미
+    ///    만든 창을 다시 열 때는 refresh() 로 다음 런루프에 미뤄 안전하게 갱신한다.
+    ///
+    /// 2) **창을 앞으로 가져오는 일은 반대로 그 자리에서(동기로) 한다.** 이 부분을
+    ///    async 로 미뤘더니("doc 으로 연 뒤 우클릭으로 다시 열면 무한로딩") 걸렸다 —
+    ///    메인 큐 블록은 공용 런루프 모드(=메뉴 추적 모드 포함)에서 실행돼, 미룬
+    ///    activate/makeKey 가 **메뉴가 아직 떠 있는 도중에** 키 창을 빼앗아 추적
+    ///    루프가 안 풀리는 행(hang)을 만든다. 동기로 하면 메뉴가 닫히고 액션이
+    ///    끝난 뒤 실행되므로 안전하다(원래 동작이며, 크래시는 늘 rebuild 쪽이었다).
     func show() {
-        // show() 는 **항상 메뉴 추적 루프 안에서** 불린다 — 메뉴바 "설정…"(상태바
-        // NSMenu)이든 펫 우클릭 "설정…"(NSMenu.popUpContextMenu)이든. 이미 한 번
-        // 연 창이 떠 있는 상태에서 다시 부르면, 아래 present() 의 rebuildContent 가
-        // `removeFromSuperview` 로 **직전에 만든 라이브 NSPopUpButton** 을 메뉴가
-        // 아직 추적 중인 도중에 헐어, AppKit 이 죽은 객체를 건드려 EXC_BAD_ACCESS
-        // 로 죽는다("doc(메뉴바)으로 연 뒤 우클릭으로 다시 열면 꺼지는" 버그 —
-        // refresh() 를 다음 런루프로 미룬 것과 완전히 같은 원인). 그래서 present()
-        // 도 다음 런루프로 미뤄, 메뉴 추적이 끝나고 액션 디스패치가 스택에서 빠진
-        // 뒤에 창을 그린다. 한 틱 늦게 뜨지만 눈에는 즉시로 보인다.
-        DispatchQueue.main.async { [weak self] in
-            self?.present()
-        }
-    }
+        let firstBuild = (window == nil)
+        if firstBuild { buildWindow() }
 
-    private func present() {
-        if window == nil { buildWindow() }
-        rebuildContent()
+        if firstBuild {
+            // doc 이 비어 헐 라이브 컨트롤이 없으므로 그 자리에서 그려도 안전하다.
+            // (창을 앞으로 내보내기 전에 그려야 콘텐츠 높이에 맞춰 창이 잡힌다.)
+            rebuildContent()
+        }
+
         guard let window else { return }
 
         // 위치를 먼저 잡는다. 앞으로 내보낸 뒤 옮기면 한 프레임 다른 자리에 보인다.
@@ -130,6 +139,15 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         // 설정 창이 계속 위에 떠 있는 성가신 창이 되지는 않는다.
         window.level = .floating
         window.makeKey()
+
+        if !firstBuild {
+            // 이미 만든 창을 다시 열었을 때만: 최신 상태(대전 상대·훅 설치 여부 등)를
+            // 반영한다. 창을 앞으로 내보내 visible 이 된 **뒤에** 부른다 — refresh()
+            // 는 isVisible 을 확인해 미루므로, 닫혔다 다시 여는 경우까지 갱신된다.
+            // 그 자리에서 rebuild 하지 않고 다음 런루프로 미뤄, 메뉴 추적 중 라이브
+            // 컨트롤을 헐어 죽거나 멈추는 일을 피한다(위 show() 규칙 1).
+            refresh()
+        }
     }
 
     func windowDidBecomeKey(_ notification: Notification) {
@@ -179,6 +197,16 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         win.isMovableByWindowBackground = true
         win.backgroundColor = .windowBackgroundColor
         win.delegate = self
+        // **닫기(빨간 X) 후 다시 열면 앱이 꺼지던 크래시의 핵심 원인.**
+        // 코드로 만든 NSWindow 는 isReleasedWhenClosed 기본값이 true 라, 사용자가
+        // 창을 닫으면 NSWindow 가 그 자리에서 해제된다. 그런데 이 컨트롤러는
+        // `window` 를 강한 참조로 재사용하므로, 닫는 순간 그 참조가 **이미 해제된
+        // 객체를 가리키는 허상 포인터**가 된다. 다음에 설정을 다시 열면 show() 가
+        // 그 죽은 window 를 objc_retain 하다가 EXC_BAD_ACCESS 로 죽었다
+        // (크래시 스택: objc_retain ← show() ← openSettingsWindow, "로딩 걸리며 꺼짐").
+        // false 로 두면 닫아도 해제되지 않고 orderOut 만 되므로, 컨트롤러가 창을
+        // 안전하게 재사용해 다시 열 수 있다.
+        win.isReleasedWhenClosed = false
 
         let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: winWidth, height: 480))
         scroll.hasVerticalScroller = true
