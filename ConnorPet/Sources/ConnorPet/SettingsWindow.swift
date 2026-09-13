@@ -23,9 +23,15 @@ protocol SettingsActionsDelegate: AnyObject {
     func settingsSetEvolutionEnabled(_ on: Bool)
     var settingsBarAlwaysVisible: Bool { get }
     func settingsSetBarAlwaysVisible(_ on: Bool)
+    var settingsDNDEnabled: Bool { get }
+    func settingsSetDND(_ on: Bool)
 
     // 경험치
     func settingsResetAllXP()
+    /// 예전 실행 방식(swift run · 옛 .app)에 남은 기록을 가져올 수 있는지.
+    var settingsLegacyStatus: XPMigration.LegacyStatus { get }
+    /// 예전 기록을 지금 펫들에 합친다. 결과를 사람이 읽을 한 줄로 돌려준다.
+    func settingsImportLegacyXP() -> String
 
     // 연동
     var settingsHooksInstalled: Bool { get }
@@ -41,7 +47,9 @@ protocol SettingsActionsDelegate: AnyObject {
     func settingsDeleteLinearKey()
 
     // 대전 / 노려보기 (같은 wifi 상대)
-    var settingsBattlePeers: [(id: String, name: String)] { get }
+    /// 이 맥에 쌓인 대전 전적 한 줄. 예: "12승 8패 · 승률 60%"
+    var settingsBattleRecord: String { get }
+    var settingsBattlePeers: [(id: String, name: String, dnd: Bool)] { get }
     /// 지금 고른 펫이 대전할 수 있는지. false(흰 비숑)면 신청 버튼 대신 안내를 띄운다.
     var settingsCurrentPetCanBattle: Bool { get }
     func settingsChallenge(peerID: String)
@@ -88,6 +96,21 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     // MARK: - Show / refresh
 
     func show() {
+        // show() 는 **항상 메뉴 추적 루프 안에서** 불린다 — 메뉴바 "설정…"(상태바
+        // NSMenu)이든 펫 우클릭 "설정…"(NSMenu.popUpContextMenu)이든. 이미 한 번
+        // 연 창이 떠 있는 상태에서 다시 부르면, 아래 present() 의 rebuildContent 가
+        // `removeFromSuperview` 로 **직전에 만든 라이브 NSPopUpButton** 을 메뉴가
+        // 아직 추적 중인 도중에 헐어, AppKit 이 죽은 객체를 건드려 EXC_BAD_ACCESS
+        // 로 죽는다("doc(메뉴바)으로 연 뒤 우클릭으로 다시 열면 꺼지는" 버그 —
+        // refresh() 를 다음 런루프로 미룬 것과 완전히 같은 원인). 그래서 present()
+        // 도 다음 런루프로 미뤄, 메뉴 추적이 끝나고 액션 디스패치가 스택에서 빠진
+        // 뒤에 창을 그린다. 한 틱 늦게 뜨지만 눈에는 즉시로 보인다.
+        DispatchQueue.main.async { [weak self] in
+            self?.present()
+        }
+    }
+
+    private func present() {
         if window == nil { buildWindow() }
         rebuildContent()
         guard let window else { return }
@@ -327,12 +350,74 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         // 경험치 초기화 (버튼)
         let reset = makeButton(title: "초기화", action: #selector(resetPressed))
 
-        return [
+        var rows = [
             RowSpec(title: "펫 선택", control: popup),
             RowSpec(title: "진화 사용", subtitle: "경험치가 쌓이면 다음 단계로 진화", control: evo),
             RowSpec(title: "경험치 바 항상 표시", subtitle: "끄면 펫에 마우스를 올렸을 때만", control: bar),
-            RowSpec(title: "모든 경험치 초기화", control: reset),
         ]
+
+        // 예전 실행 방식에 남아 있는 경험치를 손으로 가져온다.
+        //
+        // 왜 버튼이 필요한가: 경험치는 UserDefaults 에 있고 어느 파일을 쓰는지는 번들
+        // 식별자가 정한다. 그래서 swift run → .app → dmg 로 갈아타면 저장소가 갈려
+        // 경험치가 사라진 것처럼 보인다. 자동 이관은 "지금 도메인이 비어 있을 때" 만
+        // 도는데, 이미 조금 쌓인 뒤에 알아차리면 그 조건에 걸리지 않는다.
+        if let row = legacyXPRow(d) { rows.append(row) }
+
+        rows.append(RowSpec(title: "모든 경험치 초기화", control: reset))
+        return rows
+    }
+
+    /// 예전 기록이 하나라도 있으면 늘 보이는 행. 아예 없을 때만 nil 이다.
+    ///
+    /// 가져올 게 없을 때도 보여 주는 이유: 숨기면 기능이 없는 것처럼 보여서, 이미
+    /// 가져온 사람이 "가져오기가 어디 있나" 하고 찾게 된다. 상태를 문구로 밝히고
+    /// 버튼만 잠근다.
+    private func legacyXPRow(_ d: SettingsActionsDelegate) -> RowSpec? {
+        let status = d.settingsLegacyStatus
+        guard status != .none else { return nil }
+
+        let button = makeButton(title: "가져오기", action: #selector(importLegacyPressed))
+        func won(_ value: Double) -> String {
+            Self.decimal.string(from: NSNumber(value: Int(value))) ?? "\(Int(value))"
+        }
+
+        switch status {
+        case .none:
+            return nil
+        case .importable(_, let gain):
+            let pets = gain.count == 1 ? "펫 1종" : "펫 \(gain.count)종"
+            return RowSpec(title: "구 버전에서 경험치 가져오기",
+                           subtitle: "예전 기록 발견 — \(pets) · \(won(gain.values.reduce(0, +))) 늘어나요",
+                           control: button)
+        case .alreadyMerged(let found):
+            button.isEnabled = false
+            return RowSpec(title: "구 버전에서 경험치 가져오기",
+                           subtitle: "예전 기록 \(won(found.values.reduce(0, +))) — 이미 다 가져왔어요",
+                           control: button, dimmed: true)
+        }
+    }
+
+    private static let decimal: NumberFormatter = {
+        let f = NumberFormatter()
+        f.numberStyle = .decimal
+        return f
+    }()
+
+    @objc private func importLegacyPressed() {
+        guard let d = delegate,
+              case .importable(_, let gain) = d.settingsLegacyStatus else { return }
+        let total = Int(gain.values.reduce(0, +))
+        let amount = Self.decimal.string(from: NSNumber(value: total)) ?? "\(total)"
+        // 펫마다 큰 쪽을 남기는 합치기라 줄어들 일은 없지만, 경험치를 건드리는
+        // 동작이니 한 번 확인받는다.
+        guard BattleDialog.confirm(title: "예전 경험치 가져오기",
+                                   message: "예전 기록에서 \(amount) 을 가져옵니다.\n\n펫마다 더 많이 쌓인 쪽을 남기므로\n지금 경험치가 줄어들지는 않아요.",
+                                   confirmTitle: "가져오기") else { return }
+
+        let result = d.settingsImportLegacyXP()
+        rebuildContent()
+        BattleDialog.info(title: "가져오기 완료", message: result)
     }
 
     private func sourceRow(_ d: SettingsActionsDelegate) -> RowSpec {
@@ -459,15 +544,53 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
 
     private func battleRows(_ d: SettingsActionsDelegate) -> [RowSpec] {
         let canBattle = d.settingsCurrentPetCanBattle
+
+        // 방해금지 모드 — 켜면 남이 거는 대전·노려보기를 받지 않는다. 섹션 맨 위에 둬,
+        // 상대 목록보다 먼저 눈에 들어오게 한다.
+        let dnd = makeSwitch(on: d.settingsDNDEnabled, action: #selector(dndToggled(_:)))
+        var rows = [RowSpec(title: "방해금지 모드",
+                            subtitle: "켜면 남이 대전·노려보기를 걸 수 없어요 (상대에겐 '방해금지 중'으로 보임)",
+                            control: dnd)]
+
+        // 전적은 상대가 없어도 보여 준다 — 지난 성적을 보려고 여는 자리이기도 하다.
+        let reward = Self.decimal.string(from: NSNumber(value: Int(BattleRecord.winReward)))
+            ?? "\(Int(BattleRecord.winReward))"
+        rows.append(RowSpec(title: "대전 전적",
+                            subtitle: "\(d.settingsBattleRecord) · 이기면 +\(reward) EXP",
+                            control: nil, dimmed: true))
+
         let peers = d.settingsBattlePeers
         guard !peers.isEmpty else {
+            // 대전을 안 하는 펫(흰 비숑)은 상대가 없을 때 그 이유를 밝힌다.
             if !canBattle {
-                return [RowSpec(title: "비숑은 대전을 하지 않아요", subtitle: "동물보호 차원에서 대전할 수 없어요 🐾", control: nil, dimmed: true)]
+                rows.append(RowSpec(title: "비숑은 대전을 하지 않아요",
+                                    subtitle: "동물보호 차원에서 대전할 수 없어요 🐾",
+                                    control: nil, dimmed: true))
+            } else {
+                rows.append(RowSpec(title: "주변에 상대가 없어요",
+                                    subtitle: "같은 Wi-Fi의 다른 ConnorPet을 찾는 중",
+                                    control: nil, dimmed: true))
             }
-            return [RowSpec(title: "주변에 상대가 없어요", subtitle: "같은 Wi-Fi의 다른 ConnorPet을 찾는 중", control: nil, dimmed: true)]
+            return rows
         }
-        var rows: [RowSpec] = []
         for (i, peer) in peers.enumerated() {
+            // 방해금지 중인 상대는 목록엔 그대로 두되(노출), 버튼을 잠그고 이유를 밝힌다.
+            if peer.dnd {
+                let challenge = makeButton(title: "신청", action: #selector(challengePressed(_:)))
+                let stare = makeButton(title: "노려보기", action: #selector(starePressed(_:)))
+                challenge.isEnabled = false
+                stare.isEnabled = false
+                let stack = NSStackView(views: [challenge, stare])
+                stack.orientation = .horizontal
+                stack.spacing = 8
+                stack.layoutSubtreeIfNeeded()
+                stack.frame = NSRect(origin: .zero, size: stack.fittingSize)
+                rows.append(RowSpec(title: peer.name,
+                                    subtitle: "방해금지 중 — 상호작용을 받지 않아요",
+                                    control: stack, dimmed: true))
+                continue
+            }
+
             let stack = NSStackView()
             stack.orientation = .horizontal
             stack.spacing = 8
@@ -489,6 +612,10 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             rows.append(RowSpec(title: peer.name, control: stack))
         }
         return rows
+    }
+
+    @objc private func dndToggled(_ sender: NSSwitch) {
+        delegate?.settingsSetDND(sender.state == .on)
     }
 
     private func quitRow() -> RowSpec {

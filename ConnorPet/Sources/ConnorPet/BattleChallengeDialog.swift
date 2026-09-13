@@ -43,8 +43,8 @@ enum BattleDialog {
 
     /// One-button info popup (e.g. declined / failed), same look, no banner.
     ///
-    /// `portrait` 를 주면 제목 위에 그 그림이 뜬다. 노려보기가 이걸 쓴다 — 누가
-    /// 노려봤는지는 이름보다 펫 얼굴이 빨리 읽힌다.
+    /// `portrait` 를 주면 제목 위에 그 그림이 뜬다. 노려보기 말풍선을 누르면 이 모달이
+    /// 상대 펫 얼굴과 함께 뜬다 — 누가 노려봤는지는 이름보다 펫 얼굴이 빨리 읽힌다.
     static func info(title: String, message: String, portrait: NSImage? = nil) {
         let controller = DialogController(
             showsBanner: false,

@@ -61,7 +61,15 @@ private final class SpeechBubbleView: NSView {
 /// A borderless panel that floats just above the pet and shows what it is
 /// saying. Separate from the pet window on purpose: the pet window is sized
 /// tightly to the sprite, while this has to grow with the text.
-final class SpeechBubbleWindow: NSPanel {
+/// 펫 창과 **같은 종류**(`NSWindow`)로 둔다. 예전에는 `NSPanel` 이었는데, 바탕화면
+/// 위에서는 멀쩡히 보이면서 몇몇 앱 위에서만 보이지 않는다는 제보가 있었다. 펫 창만
+/// `NSWindow` 였고 그것은 어디서든 보였다.
+///
+/// 층(`.floating`)·스페이스 설정·`hidesOnDeactivate` 는 이미 펫과 같았고, 실제로 다른
+/// 앱을 앞에 두고 재도 윈도우 서버가 매긴 레이어가 셋 다 같았다(`CONNORPET_SELFTEST=overlay`).
+/// 그래서 남은 차이는 창 **종류** 하나뿐이었다. 이 창들은 클릭을 통과시키므로
+/// `.nonactivatingPanel` 로 얻을 것이 없어, 확실히 동작하는 쪽으로 맞췄다.
+final class SpeechBubbleWindow: NSWindow {
     private let bubble = SpeechBubbleView()
     private let label = NSTextField(wrappingLabelWithString: "")
     private var dismissTimer: Timer?
@@ -72,9 +80,7 @@ final class SpeechBubbleWindow: NSPanel {
     init() {
         super.init(
             contentRect: NSRect(x: 0, y: 0, width: 200, height: 60),
-            // .nonactivatingPanel keeps clicking the bubble from pulling focus
-            // away from whatever the user is actually typing in.
-            styleMask: [.borderless, .nonactivatingPanel],
+            styleMask: [.borderless],
             backing: .buffered,
             defer: false
         )

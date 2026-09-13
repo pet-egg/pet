@@ -113,8 +113,16 @@ func runQuestSelfTest() -> Never {
         print("[selftest] GitHub \(prs.count)건, id 형식·중복 없음 확인")
     }
 
-    if QuestService.linearAPIKey() == nil {
-        print("[selftest] Linear: 키체인에 키가 없어 건너뜀 (README 의 security 명령 참고)")
+    // 키체인은 **읽지 않는다**. 항목은 만든 바이너리의 코드 서명에 묶이고 ad-hoc
+    // 서명은 빌드마다 바뀌므로, 검증용 빌드가 읽으려 하면 암호 창이 뜬다 — 헤드리스
+    // 실행에서는 아무도 못 누르는 창을 기다리며 영구히 멈춘다(실제로 그랬다).
+    // 저장 여부 플래그만 보고, 실제 호출은 명시적으로 요청할 때만 한다.
+    let wantsLinear = ProcessInfo.processInfo.environment["CONNORPET_SELFTEST_LINEAR"] != nil
+    if !LinearKeychain.isStored {
+        print("[selftest] Linear: 저장된 키가 없어 건너뜀 (설정 창에서 넣을 수 있다)")
+    } else if !wantsLinear {
+        print("[selftest] Linear: 키는 있지만 건너뜀 — 읽으면 키체인 암호 창이 떠 멈춘다."
+              + " 확인하려면 CONNORPET_SELFTEST_LINEAR=1 로 돌리고 창에서 허용할 것")
     } else {
         let issues = service.fetchLinearIssues(since: since)
         for i in issues.prefix(3) { print("[selftest] Linear: \(i.id)  \(i.title.prefix(30))") }

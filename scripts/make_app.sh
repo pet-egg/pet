@@ -14,7 +14,10 @@ PACKAGE_DIR="$REPO_ROOT/ConnorPet"
 INSTALL_DIR="${1:-$HOME/Applications}"
 APP="$INSTALL_DIR/ConnorPet.app"
 
-BUNDLE_ID="io.github.pet-egg.connorpet"
+# dmg(.github/workflows/build-pet-dmg.yml)와 **반드시 같은 값**이어야 한다.
+# 번들 식별자가 UserDefaults 도메인을 정하므로, 다르면 로컬 빌드와 배포본이 서로
+# 다른 저장소를 쓰게 되고 갈아탈 때 경험치가 사라진 것처럼 보인다. 실제로 그랬다.
+BUNDLE_ID="io.github.pet-egg.pet"
 
 # Sparkle 자동 업데이트 설정.
 #   - SUFeedURL      : appcast(업데이트 목록)을 올려 둔 곳. GitHub Pages 로 서빙한다.

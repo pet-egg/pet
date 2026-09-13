@@ -128,9 +128,12 @@ final class ClaudeDesktopStatusWatcher: AgentStatusWatching {
         generatingRun = 0
         pendingDoneFromAX = false
         pendingDoneDeadline = nil
-        // Ask for the Accessibility grant up front (shows the system prompt once
-        // if not yet trusted). We keep running either way — see poll().
-        probe.ensurePermissionPrompted()
+        // Ask for the Accessibility grant up front. This also heals the
+        // "업데이트 후 손쉬운 사용이 켜져 있는데도 안 먹는" 버그: an app update changes
+        // our ad-hoc code signature's cdhash, so macOS TCC no longer trusts the new
+        // binary even though the toggle still shows ON — and it won't re-prompt
+        // while that stale record exists. See `reconcileAccessibilityGrant()`.
+        probe.reconcileAccessibilityGrant()
         poll()
         let t = Timer(timeInterval: pollInterval, repeats: true) { [weak self] _ in
             self?.poll()
@@ -332,6 +335,67 @@ final class ClaudeAXProbe {
     // 프로토콜 설정" sidebar entry).
     private let approvalAllowLabels = ["허용", "allow"]
     private let approvalDenyLabels  = ["거부", "거절", "deny", "reject"]
+
+    /// UserDefaults key holding the app version we last ran as. Used to notice an
+    /// update (→ our code signature changed → the Accessibility grant went stale).
+    private let lastRunVersionKey = "ClaudeAXProbe.lastRunBundleVersion"
+
+    /// Ensure the Accessibility grant is actually usable, healing the
+    /// "update breaks 손쉬운 사용" bug along the way.
+    ///
+    /// We ship ad-hoc signed (no Developer ID), so every build has a different
+    /// cdhash. macOS TCC keys the Accessibility grant to the binary's code
+    /// requirement, which for an ad-hoc signature is that cdhash — so the moment
+    /// Sparkle installs an update the grant no longer matches: `AXIsProcessTrusted()`
+    /// returns false, the System Settings toggle still shows ON, and macOS refuses
+    /// to re-prompt while that stale record exists. The pet then stops reacting to
+    /// Claude Desktop until the user removes and re-adds us by hand.
+    ///
+    /// We can't keep the grant valid without a stable (Developer-ID) signature, so
+    /// instead we detect the version change and, if we're not actually trusted,
+    /// purge the stale TCC record with `tccutil reset`. With the record gone the
+    /// normal prompt below reappears, so the user re-grants in one step instead of
+    /// having to hunt down the toggle. A working grant (trusted) is never touched.
+    func reconcileAccessibilityGrant() {
+        let defaults = UserDefaults.standard
+        let current = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""
+        let previous = defaults.string(forKey: lastRunVersionKey)
+        defaults.set(current, forKey: lastRunVersionKey)
+
+        // Only act on a genuine update (a previous version was recorded and it
+        // differs) AND only when the grant is actually broken — never disturb a
+        // permission that still works. `current` empty (plain `swift run`, no
+        // Info.plist version) stays equal across runs, so dev builds never reset.
+        if let previous, !previous.isEmpty, previous != current, !AXIsProcessTrusted() {
+            resetStaleAccessibilityGrant(previous: previous, current: current)
+        }
+        ensurePermissionPrompted()
+    }
+
+    /// Remove our own stale Accessibility record so macOS will prompt again.
+    /// `tccutil reset Accessibility <bundleID>` runs per-user with no admin rights
+    /// and no UI; it clears the entry for exactly this bundle id.
+    private func resetStaleAccessibilityGrant(previous: String, current: String) {
+        guard let bundleID = Bundle.main.bundleIdentifier, !bundleID.isEmpty else { return }
+        if ProcessInfo.processInfo.environment["CONNORPET_DEBUG"] != nil {
+            FileHandle.standardError.write(
+                "[connor-pet] claude-desktop: 업데이트 감지(\(previous)→\(current)) + 손쉬운 사용 미인증 → tccutil reset Accessibility \(bundleID)\n"
+                    .data(using: .utf8)!
+            )
+        }
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
+        task.arguments = ["reset", "Accessibility", bundleID]
+        do {
+            try task.run()
+            task.waitUntilExit()
+        } catch {
+            FileHandle.standardError.write(
+                "[connor-pet] claude-desktop: tccutil reset 실패(\(error)) — 손쉬운 사용에서 ConnorPet을 수동으로 껐다 켜 주세요.\n"
+                    .data(using: .utf8)!
+            )
+        }
+    }
 
     /// If the app isn't trusted for Accessibility yet, show the system prompt
     /// once. Safe to call repeatedly; only prompts while untrusted.

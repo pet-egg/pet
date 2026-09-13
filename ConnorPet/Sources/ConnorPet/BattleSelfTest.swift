@@ -122,6 +122,44 @@ func runBattleSelfTest() -> Never {
 /// 각자 자기 규칙으로 계산해 두 화면에 서로 다른 승자가 떴다. 지금은 어느 쪽에서
 /// 걸든 전투가 열리지 않고 "버전이 다르다" 로 끝나야 한다.
 private func runVersionSkewPhase(fail: @escaping (String) -> Never) {
+    // ── 전적 저장 ──
+    //
+    // 사용자의 실제 전적은 건드리지 않는다 — 검증용 저장소에 대고 돌린다.
+    let recordSuite = "connor-pet.selftest.record"
+    UserDefaults().removePersistentDomain(forName: recordSuite)
+    guard let store = UserDefaults(suiteName: recordSuite) else { fail("검증용 저장소 실패") }
+
+    guard BattleRecord.load(from: store) == BattleRecord(wins: 0, losses: 0) else {
+        fail("처음 전적이 0승 0패가 아니다")
+    }
+    // 한 판도 안 했으면 승률이 없어야 한다. 0% 로 보여 주면 "다 졌다" 로 읽힌다.
+    guard BattleRecord.load(from: store).winRate == nil else { fail("무기록인데 승률이 있다") }
+    print("[selftest] 무기록: \(BattleRecord.load(from: store).summary)")
+
+    for _ in 0..<3 { BattleRecord.record(won: true, in: store) }
+    for _ in 0..<2 { BattleRecord.record(won: false, in: store) }
+    let record = BattleRecord.load(from: store)
+    guard record.wins == 3, record.losses == 2, record.total == 5 else {
+        fail("전적이 틀렸다: \(record)")
+    }
+    guard let rate = record.winRate, abs(rate - 0.6) < 0.0001 else {
+        fail("승률이 틀렸다: \(record.winRate ?? -1)")
+    }
+    guard record.summary == "3승 2패 · 승률 60%" else { fail("문구가 틀렸다: \(record.summary)") }
+    print("[selftest] 3승 2패 → \(record.summary)")
+
+    // 앱을 껐다 켠 것과 같은 상황 — 값은 UserDefaults 에 남아야 한다.
+    guard let reopened = UserDefaults(suiteName: recordSuite),
+          BattleRecord.load(from: reopened) == record else {
+        fail("다시 읽으니 전적이 사라졌다")
+    }
+    print("[selftest] 다시 읽어도 그대로 (로컬에 저장됨)")
+
+    BattleRecord.reset(in: store)
+    guard BattleRecord.load(from: store).total == 0 else { fail("초기화가 안 된다") }
+    UserDefaults().removePersistentDomain(forName: recordSuite)
+    print("[selftest] 초기화 확인 · 보상 \(Int(BattleRecord.winReward)) EXP")
+
     print("[selftest] phase 2: 세대가 다른 상대와 붙여 본다…")
 
     let current = BattleService(displayName: "TesterNew", petSlug: "squirtle")
