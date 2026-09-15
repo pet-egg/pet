@@ -13,6 +13,13 @@ protocol SettingsActionsDelegate: AnyObject {
     var settingsSelectedPetSlug: String { get }
     func settingsSelectPet(slug: String)
 
+    // 펫 이름 — 지금 고른 펫에만 적용된다. 빈 값이면 도감 이름으로 돌아간다.
+    /// 지금 펫에 지어 준 이름. 안 지었으면 nil.
+    var settingsPetNickname: String? { get }
+    /// 이름을 안 지었을 때 입력란에 흐리게 보여 줄 도감 이름.
+    var settingsPetSpeciesName: String { get }
+    func settingsSetPetNickname(_ name: String?)
+
     // 상태 소스
     var settingsOrderedStatusSources: [(id: String, name: String)] { get }
     var settingsSelectedStatusSource: String { get }
@@ -378,8 +385,33 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         // 경험치 초기화 (버튼)
         let reset = makeButton(title: "초기화", action: #selector(resetPressed))
 
+        // 펫 이름 짓기. 지금 고른 펫에만 적용된다 — 펫마다 따로 기억한다.
+        let species = d.settingsPetSpeciesName
+        let nameField = NSTextField()
+        nameField.stringValue = d.settingsPetNickname ?? ""
+        nameField.placeholderString = species
+        nameField.font = .systemFont(ofSize: 12)
+        nameField.target = self
+        nameField.action = #selector(petNameCommitted(_:))
+        // 제약으로 크기를 주면 배치 시점의 frame 이 0 이라 행이 오른쪽 끝에 0폭으로
+        // 놓고, 그 뒤 Auto Layout 이 늘려서 카드 밖으로 삐져나간다(실제로 잘렸다).
+        // 스택뷰에 담아 fittingSize 로 실제 크기를 먼저 확정한다 — Linear 키 입력란과
+        // 같은 방식이다.
+        nameField.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            nameField.widthAnchor.constraint(equalToConstant: 150),
+            nameField.heightAnchor.constraint(equalToConstant: 22),
+        ])
+        petNameField = nameField
+        let nameBox = NSStackView(views: [nameField])
+        nameBox.orientation = .horizontal
+        nameBox.frame.size = nameBox.fittingSize
+
         var rows = [
             RowSpec(title: "펫 선택", control: popup),
+            RowSpec(title: "펫 이름",
+                    subtitle: "비우면 \(species)\(KoreanParticle.direction(after: species)) 돌아가요 · Return 으로 저장",
+                    control: nameBox),
             RowSpec(title: "진화 사용", subtitle: "경험치가 쌓이면 다음 단계로 진화", control: evo),
             RowSpec(title: "경험치 바 항상 표시", subtitle: "끄면 펫에 마우스를 올렸을 때만", control: bar),
         ]
@@ -696,6 +728,16 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     }
 
     // MARK: - Actions (모두 delegate 로 위임 — 메뉴바와 같은 경로)
+
+    /// 지금 화면에 있는 이름 입력란. rebuild 마다 새로 만든다.
+    private weak var petNameField: NSTextField?
+
+    /// Return 을 누르거나 입력란에서 포커스가 빠질 때 저장한다.
+    @objc private func petNameCommitted(_ sender: NSTextField) {
+        delegate?.settingsSetPetNickname(sender.stringValue)
+        // 보조문구와 다른 화면(호버 문구 등)을 갱신한다.
+        rebuildContent()
+    }
 
     @objc private func petPopupChanged(_ sender: NSPopUpButton) {
         guard let slug = sender.selectedItem?.representedObject as? String else { return }

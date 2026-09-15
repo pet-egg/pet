@@ -72,7 +72,13 @@ private final class PasteTestRunner: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+        // 창이 key 가 되고 입력란이 실제 응답자가 될 때까지 기다린다.
+        //
+        // 예전에는 0.5초만 기다렸는데, 이 앱은 .accessory 라 활성화가 늦거나 막힐 때가
+        // 있어 3회 중 1회꼴로 "받아 줄 응답자가 없다" 로 실패했다. 제품 문제가 아니라
+        // 검증이 성급했던 것이다 — 실제 사용자는 입력란을 클릭하므로 응답자가 확실히 선다.
+        // 불안정한 검증은 나머지 검증의 신뢰까지 깎으므로 조건을 기다리도록 바꿨다.
+        Self.whenReady(window: window, field: field, giveUpAfter: 5.0, fail: self.fail) {
             let restore = {
                 board.clearContents()
                 if let saved { board.setString(saved, forType: .string) }
@@ -94,6 +100,27 @@ private final class PasteTestRunner: NSObject, NSApplicationDelegate {
             print("SELFTEST PASS")
             exit(0)
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 15) { self.fail("시간 초과") }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 20) { self.fail("시간 초과") }
+    }
+
+    /// 창이 key 가 되고 입력란이 첫 응답자가 되면 `body` 를 부른다. 0.2초마다 다시 본다.
+    private static func whenReady(window: NSWindow, field: NSTextField,
+                                  giveUpAfter: TimeInterval, fail: @escaping (String) -> Never,
+                                  body: @escaping () -> Void) {
+        let deadline = Date().addingTimeInterval(giveUpAfter)
+        func attempt() {
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+            _ = window.makeFirstResponder(field)
+            // 텍스트 필드가 첫 응답자가 되면 실제 응답자는 창의 필드 에디터(NSTextView)다.
+            let ready = window.isKeyWindow && (window.firstResponder is NSTextView)
+            if ready { body(); return }
+            guard Date() < deadline else {
+                fail("창이 \(giveUpAfter)초 안에 포커스를 얻지 못했다"
+                     + " (key=\(window.isKeyWindow) 응답자=\(type(of: window.firstResponder)))")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: attempt)
+        }
+        attempt()
     }
 }

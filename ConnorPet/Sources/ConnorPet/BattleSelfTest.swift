@@ -58,10 +58,13 @@ func runBattleSelfTest() -> Never {
         // 커넥션이 곧바로 해제돼 아무것도 가지 않았고, 상대 화면은 조용했다.
         guard let b = peerB else { fail("peerB 를 못 찾았다") }
         var stareArrived = false
-        serviceB.onStare = { fromName, fromPet in
-            print("[selftest] B 가 노려보기를 받았다: \(fromName)/\(fromPet)")
+        // 이름도 함께 실려야 한다 — slug 만으로는 상대가 지어 준 이름을 알 수 없다.
+        serviceA.localPetNickname = { "불꽃이" }
+        serviceB.onStare = { fromName, fromPet, nickname in
+            print("[selftest] B 가 노려보기를 받았다: \(fromName)/\(fromPet)/\(nickname ?? "이름없음")")
             guard fromName == "TesterA" else { fail("노려본 사람 이름이 틀렸다: \(fromName)") }
             guard fromPet == "totodile" else { fail("노려본 펫이 틀렸다: \(fromPet)") }
+            guard nickname == "불꽃이" else { fail("지어 준 이름이 안 왔다: \(nickname ?? "nil")") }
             stareArrived = true
             serviceA.stop()
             serviceB.stop()

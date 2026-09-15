@@ -358,7 +358,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // 쓴다(CONNORPET_STARE_FROM 으로 지정, 없으면 내 펫으로 대체).
         if let path = ProcessInfo.processInfo.environment["CONNORPET_DEBUG_STARE"] {
             let fromPet = ProcessInfo.processInfo.environment["CONNORPET_STARE_FROM"] ?? selectedPetSlug
-            presentStare(fromName: "연습상대", fromPet: fromPet)
+            // 이름을 지어 준 상대도 그려 볼 수 있게 환경 변수로 받는다.
+            let nickname = ProcessInfo.processInfo.environment["CONNORPET_STARE_NICKNAME"]
+            presentStare(fromName: "연습상대", fromPet: fromPet, nickname: nickname)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
                 if let view = self?.stareBubble?.contentView,
                    let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
@@ -489,8 +491,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let stage = self.evolutionEnabled ? XPModel.stage(tokens: tokens) : 0
             return battlePower(tokens: tokens, stage: stage)
         }
-        service.onStare = { [weak self] fromName, fromPet in
-            self?.presentStare(fromName: fromName, fromPet: fromPet)
+        service.onStare = { [weak self] fromName, fromPet, nickname in
+            self?.presentStare(fromName: fromName, fromPet: fromPet, nickname: nickname)
+        }
+        service.localPetNickname = { [weak self] in
+            guard let self else { return nil }
+            return PetNames.name(for: self.selectedPetSlug)
         }
         service.onIncompatiblePeer = { [weak self] fromName in
             self?.showInfo(title: "버전이 달라요",
@@ -651,7 +657,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// the same Wi-Fi; picking one sends them a challenge. Shows a disabled
     /// placeholder while nobody's around yet.
     /// 누가 노려봤을 때 뜨는 알림. 확인 버튼 하나뿐이다.
-    private func presentStare(fromName: String, fromPet: String) {
+    private func presentStare(fromName: String, fromPet: String, nickname: String?) {
         // 노려보기는 남이 거는 상호작용이라, 업무 중 가운데 모달로 바로 튀어나오면
         // 방해가 된다. 그래서 먼저 펫 옆에 작은 **말풍선**만 조용히 띄우고("모든
         // 상호작용은 말풍선으로, 모달은 바로 X" 원칙 — README/CLAUDE 참고), 말풍선을
@@ -660,16 +666,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let petFrame = window?.frame else { return }
         // slug 로 각자 번들에서 찾는다(PetPortrait 참고). 우리 번들에 없는 펫이면 nil.
         let face = PetPortrait.face(of: fromPet)
-        let species = Self.koreanPetName(fromPet)
+        // 상대가 이름을 지어 줬으면 그 이름으로, 아니면 도감 이름으로 부른다.
+        //
+        // 빈 문자열은 없는 것으로 본다. 우리 앱은 빈 이름을 저장하지 않지만 들어오는
+        // 값은 남의 기기에서 온 것이라 믿을 수 없다 — 그대로 쓰면 "OO의 가 노려봐요"
+        // 가 된다(실제로 그렇게 나왔다). 길이도 잘라 둔다. 긴 문자열을 보내면 말풍선이
+        // 화면을 가로지른다.
+        let trimmed = nickname?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let given = (trimmed?.isEmpty ?? true) ? nil : String(trimmed!.prefix(PetNames.maxLength))
+        let species = given ?? Self.koreanPetName(fromPet)
+        // 조사도 이름에 맞춘다. "가" 를 박아 두면 "불꽃가 노려봅니다" 가 된다.
+        let particle = KoreanParticle.subject(after: species)
 
         // 누르면 상대 펫 얼굴을 큼직하게 띄우는 기존 모달로 이어진다.
         stareBubble?.onClick = {
             BattleDialog.info(title: "노려보기",
-                              message: "\(fromName)의 \(species)가\n노려봅니다.",
+                              message: "\(fromName)의 \(species)\(particle)\n노려봅니다.",
                               portrait: face)
         }
         stareBubble?.show(above: petFrame, dot: face,
-                          text: "😠 \(fromName)의 \(species)가 노려봐요!",
+                          text: "😠 \(fromName)의 \(species)\(particle) 노려봐요!",
                           duration: 8)
     }
 
@@ -1512,6 +1528,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// 호버할 때 펫 아래에 뜨는 문구. "EXP 100,000 / 200,000,000 - 0.05%" 꼴이다.
     /// 분모는 **다음 진화 지점**이라, 진화할 때마다 기준이 올라간다.
+    /// 마우스를 올렸을 때 펫 아래에 뜨는 문구. 첫 줄은 이름, 둘째 줄은 경험치다.
+    ///
+    /// 이름을 앞에 두는 이유: 경험치는 바로도 보이지만 이름은 여기서만 보인다.
+    /// 이름을 안 지었으면 도감 이름(파이리 등)을 쓴다.
+    private func hoverDetail(tokens: Double) -> String {
+        let species = Self.koreanPetName(selectedPetSlug)
+        let name = PetNames.display(for: selectedPetSlug, fallback: species)
+        return "\(name)\n\(Self.xpDetail(tokens: tokens))"
+    }
+
     private static func xpDetail(tokens: Double) -> String {
         let p = XPModel.progress(tokens: tokens)
         let n = NumberFormatter()
@@ -1533,7 +1559,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let tokens = petTokens[selectedPetSlug] ?? 0
         let stage = evolutionEnabled ? XPModel.stage(tokens: tokens) : 0
         petView?.setProgress(percent: currentPercent, stage: stage,
-                             detail: Self.xpDetail(tokens: tokens))
+                             detail: hoverDetail(tokens: tokens))
         updateXPDetailWindow()
         if stage != currentStage {
             currentStage = stage
@@ -1809,6 +1835,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 /// 경로(changePet / changeStatusSource / setEvolutionEnabled / toggleClaudeHooks
 /// 등)로 위임해, 어느 쪽에서 바꾸든 동작·저장·메뉴바 갱신이 동일하다.
 extension AppDelegate: SettingsActionsDelegate {
+    var settingsPetNickname: String? { PetNames.name(for: selectedPetSlug) }
+    var settingsPetSpeciesName: String { Self.koreanPetName(selectedPetSlug) }
+
+    /// 지금 고른 펫에 이름을 지어 준다. 빈 값이면 지워 도감 이름으로 돌아간다.
+    ///
+    /// 기본형 slug 에 저장하므로 진화해도 같은 이름이 따라온다 — 진화는 같은 펫이
+    /// 자란 것이지 다른 펫이 아니다.
+    func settingsSetPetNickname(_ name: String?) {
+        PetNames.set(name, for: selectedPetSlug)
+        // 마우스를 올린 채로 바꿨을 수 있으니 떠 있는 문구를 바로 갈아 준다.
+        updateXPDetailWindow()
+    }
+
     var settingsBattleRecord: String { BattleRecord.load().summary }
 
     /// 예전 기록을 가져올 수 있는지. 판정은 `XPMigration.status` 가 한다.

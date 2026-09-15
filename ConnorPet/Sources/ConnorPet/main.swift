@@ -12,6 +12,11 @@ if ProcessInfo.processInfo.environment["CONNORPET_SELFTEST"] == "overlay" {
     runOverlayLayerSelfTest()
 }
 
+// 펫 이름 저장과 한국어 조사: `CONNORPET_SELFTEST=petname swift run`.
+if ProcessInfo.processInfo.environment["CONNORPET_SELFTEST"] == "petname" {
+    runPetNameSelfTest()
+}
+
 // 실행 방식이 바뀌었을 때 경험치 이관: `CONNORPET_SELFTEST=migration swift run`.
 if ProcessInfo.processInfo.environment["CONNORPET_SELFTEST"] == "migration" {
     runMigrationSelfTest()

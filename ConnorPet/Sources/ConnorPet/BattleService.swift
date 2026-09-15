@@ -47,6 +47,9 @@ struct BattleMessage: Codable {
     var fromID: String?
     var fromName: String?
     var fromPet: String?
+    /// 보내는 쪽이 펫에 지어 준 이름. 안 지었으면 nil 이라 받는 쪽이 도감 이름을 쓴다.
+    /// 이름은 각자 기기에만 있으므로 이것만은 실어 보내야 한다 — slug 로는 알 수 없다.
+    var fromPetNickname: String?
     var seed: UInt64?
     /// 도전하는 쪽 펫의 성장 파워(0...1). 받는 쪽이 전투를 계산할 때 쓴다.
     var power: Double?
@@ -95,7 +98,9 @@ final class BattleService {
     /// animate: our fixed role, the shared outcome, and the opponent's pet slug.
     var onBattleStart: ((_ myRole: BattleRole, _ outcome: BattleOutcome, _ opponentName: String, _ opponentPet: String) -> Void)?
     /// 누가 노려봤을 때. (보낸 사람 이름, 그쪽 펫 slug)
-    var onStare: ((_ fromName: String, _ fromPet: String) -> Void)?
+    var onStare: ((_ fromName: String, _ fromPet: String, _ nickname: String?) -> Void)?
+    /// 지금 펫에 지어 준 이름. 노려보기에 실어 보낸다.
+    var localPetNickname: (() -> String?)?
     /// 세대가 다른 상대가 우리에게 대전을 걸어왔을 때. 받는 쪽 사용자에게도 이유를 알린다.
     var onIncompatiblePeer: ((_ fromName: String) -> Void)?
 
@@ -231,7 +236,8 @@ final class BattleService {
         if msg.type == .stare {
             let name = msg.fromName ?? "누군가"
             let pet = msg.fromPet ?? ""
-            DispatchQueue.main.async { self.onStare?(name, pet) }
+            let nickname = msg.fromPetNickname
+            DispatchQueue.main.async { self.onStare?(name, pet, nickname) }
             queue.asyncAfter(deadline: .now() + 0.3) { conn.cancel() }
             return
         }
@@ -342,7 +348,8 @@ final class BattleService {
                                          version: self.protocolVersion,
                                          fromID: self.instanceID,
                                          fromName: self.displayName,
-                                         fromPet: self.petSlug))
+                                         fromPet: self.petSlug,
+                                         fromPetNickname: self.localPetNickname?()))
                 // 보낸 뒤 플러시될 시간만 주고 닫는다.
                 self.queue.asyncAfter(deadline: .now() + 0.5, execute: done)
             }
