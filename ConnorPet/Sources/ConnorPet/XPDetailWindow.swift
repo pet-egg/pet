@@ -20,7 +20,9 @@ import AppKit
 final class XPDetailWindow: NSWindow {
     private let label = NSTextField(labelWithString: "")
     /// 문구와 창 가장자리 사이 여백.
-    private static let padding = NSSize(width: 6, height: 3)
+    /// 문구와 창 가장자리 사이 여백. 글자에 그림자를 깔아 두어(흐림 3) 글자 폭만큼만
+    /// 잡으면 그림자가 잘린다 — 가로는 그만큼 더 준다.
+    private static let padding = NSSize(width: 10, height: 4)
     /// 펫 창 아래 경계에서 얼마나 띄울지.
     private static let gap: CGFloat = 2
 
@@ -45,6 +47,10 @@ final class XPDetailWindow: NSWindow {
         label.backgroundColor = .clear
         label.isBezeled = false
         label.alignment = .center
+        // 이름 줄 + 경험치 줄로 두 줄이다. 기본값(한 줄)이면 둘째 줄이 통째로 잘린다.
+        label.maximumNumberOfLines = 0
+        // 줄은 우리가 \n 으로 직접 나눈다. 단어 단위로 접으면 숫자 중간에서 꺾인다.
+        label.lineBreakMode = .byClipping
         // 배경이 밝든 어둡든 읽히도록 검은 그림자를 깔았다.
         let shadow = NSShadow()
         shadow.shadowColor = NSColor(calibratedWhite: 0, alpha: 0.9)
@@ -64,7 +70,12 @@ final class XPDetailWindow: NSWindow {
     func show(text: String, below petFrame: NSRect) {
         guard !text.isEmpty else { hide(); return }
         label.stringValue = text
-        let textSize = label.intrinsicContentSize
+        // intrinsicContentSize 는 여러 줄에서 폭을 모자라게 잡아 첫 글자("E")가 잘렸다.
+        // 폭을 넉넉히 주고 실제로 필요한 크기를 물어본 뒤 올림한다 — 소수점이 남으면
+        // 창 프레임이 정수로 깎이면서 마지막 픽셀이 사라진다.
+        let unbounded = CGFloat.greatestFiniteMagnitude
+        let measured = label.sizeThatFits(NSSize(width: unbounded, height: unbounded))
+        let textSize = NSSize(width: ceil(measured.width), height: ceil(measured.height))
         let size = NSSize(width: textSize.width + Self.padding.width * 2,
                           height: textSize.height + Self.padding.height * 2)
 

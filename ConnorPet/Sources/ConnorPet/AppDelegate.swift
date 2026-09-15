@@ -389,6 +389,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
 
+        // 마우스 오버 문구(이름 + 경험치)를 PNG 로 떠서 확인한다:
+        // CONNORPET_DEBUG_HOVER=<파일>. 글자가 잘리는지는 눈으로만 잡힌다.
+        if let path = ProcessInfo.processInfo.environment["CONNORPET_DEBUG_HOVER"] {
+            let anchor = NSRect(x: 400, y: 400, width: 120, height: 120)
+            let win = XPDetailWindow()
+            let text = ProcessInfo.processInfo.environment["CONNORPET_DEBUG_HOVER_TEXT"]
+                ?? hoverDetail(tokens: 125_253_028)
+            win.show(text: text, below: anchor)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                if let view = win.contentView,
+                   let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
+                    view.cacheDisplay(in: view.bounds, to: rep)
+                    try? rep.representation(using: .png, properties: [:])?
+                        .write(to: URL(fileURLWithPath: path))
+                }
+                NSApp.terminate(nil)
+            }
+            return
+        }
+
         // 전투 화면을 PNG 로 떠서 확인한다: CONNORPET_DEBUG_BATTLE=<파일>.
         // 진화 상태를 함께 주면(CONNORPET_DEBUG_STAGE=2) 그 단계로 그린다 —
         // "대전에서 진화 전 모습이 나온다" 같은 문제는 눈으로만 잡힌다.
