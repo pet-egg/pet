@@ -122,6 +122,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// 지금 고른 펫이 대전할 수 있는지.
     private var currentPetCanBattle: Bool { !Self.nonBattlePetSlugs.contains(selectedPetSlug) }
 
+    /// **지금 화면에 보이는** 펫의 slug. 진화했으면 진화형이다.
+    ///
+    /// `selectedPetSlug` 과 갈라 써야 하는 이유: 그쪽은 메뉴에서 고른 **기본형**이고,
+    /// 경험치·이름을 어디에 저장할지를 정하는 신원이다(진화해도 같은 펫이므로 바뀌면
+    /// 안 된다). 반면 사용자 눈에 보이는 그림과 종 이름은 진화형을 따라야 한다.
+    ///
+    /// 이 둘을 섞어서 실제로 났던 버그: 대전 화면이 리자몽으로 진화해 놓고도 파이리를
+    /// 그렸다. 상대는 진화형으로 보이는데(광고하는 slug 는 표시형이다) 내 쪽만
+    /// 기본형이라 더 눈에 띄었다.
+    private var displayedPetSlug: String {
+        currentDisplaySlug.isEmpty ? selectedPetSlug : currentDisplaySlug
+    }
+
     /// 번들에 들어 있는 **모든** 펫 slug — 메뉴에 안 뜨는 진화형까지. 상대가 진화한
     /// 펫으로 노려볼 수 있으므로 초상 검증은 이 목록 전체를 봐야 한다.
     static var bundledPetSlugs: [String] {
@@ -374,6 +387,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
 
+        // 전투 화면을 PNG 로 떠서 확인한다: CONNORPET_DEBUG_BATTLE=<파일>.
+        // 진화 상태를 함께 주면(CONNORPET_DEBUG_STAGE=2) 그 단계로 그린다 —
+        // "대전에서 진화 전 모습이 나온다" 같은 문제는 눈으로만 잡힌다.
+        if let path = ProcessInfo.processInfo.environment["CONNORPET_DEBUG_BATTLE"] {
+            if let raw = ProcessInfo.processInfo.environment["CONNORPET_DEBUG_STAGE"],
+               let stage = Int(raw) {
+                currentStage = stage
+                refreshDisplayedPet()
+            }
+            let outcome = simulateBattle(seed: 42, powers: [.challenger: 0.5, .accepter: 0.2])
+            presentBattle(myRole: .challenger, outcome: outcome,
+                          opponentName: "연습상대",
+                          opponentPet: ProcessInfo.processInfo.environment["CONNORPET_DEBUG_OPP"] ?? "squirtle")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
+                if let view = self?.battleWindow?.contentView,
+                   let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
+                    view.cacheDisplay(in: view.bounds, to: rep)
+                    try? rep.representation(using: .png, properties: [:])?
+                        .write(to: URL(fileURLWithPath: path))
+                }
+                NSApp.terminate(nil)
+            }
+            return
+        }
+
         // 설정 창이 실제로 **눈에 보이게** 뜨는지 확인한다: CONNORPET_SETTINGS_CHECK=1.
         //
         // 창을 만드는 것만으로는 부족하다. 이 앱은 .accessory 라 메뉴 막대 항목을
@@ -605,7 +643,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func presentBattle(myRole: BattleRole, outcome: BattleOutcome, opponentName: String, opponentPet: String) {
         guard battleWindow == nil else { return }
-        guard let mySheet = try? Self.loadSpriteSheet(slug: selectedPetSlug) else { return }
+        guard let mySheet = try? Self.loadSpriteSheet(slug: displayedPetSlug) else { return }
         // Fall back to our own sheet if the opponent's pet isn't bundled here.
         let oppSheet = (try? Self.loadSpriteSheet(slug: opponentPet)) ?? mySheet
 
@@ -615,7 +653,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             myName: "나",
             oppName: opponentName,
             myRole: myRole,
-            outcome: outcome
+            outcome: outcome,
+            myStage: Self.stage(ofDisplaySlug: displayedPetSlug),
+            oppStage: Self.stage(ofDisplaySlug: opponentPet)
         )
         // 전적과 보상은 **전투 창이 닫힐 때** 처리한다. 지금 주면 축하 말풍선이
         // 전투 화면 위에 겹쳐 뜬다. 창이 일찍 닫혀도(클릭으로 넘겨도) 승부는 이미
@@ -1533,7 +1573,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// 이름을 앞에 두는 이유: 경험치는 바로도 보이지만 이름은 여기서만 보인다.
     /// 이름을 안 지었으면 도감 이름(파이리 등)을 쓴다.
     private func hoverDetail(tokens: Double) -> String {
-        let species = Self.koreanPetName(selectedPetSlug)
+        // 종 이름은 보이는 쪽(진화형), 지어 준 이름은 기본형에 저장돼 있다.
+        let species = Self.koreanPetName(displayedPetSlug)
         let name = PetNames.display(for: selectedPetSlug, fallback: species)
         return "\(name)\n\(Self.xpDetail(tokens: tokens))"
     }
@@ -1602,6 +1643,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let ww = Int(self.window?.frame.width ?? 0)
             FileHandle.standardError.write("[connor-pet] 표시 \(slug)  (기준 \(selectedPetSlug), 단계 \(currentStage), XP \(t), 창 \(ww)pt)\n".data(using: .utf8)!)
         }
+    }
+
+    /// 표시형 slug 가 몇 단계 진화형인지. 기본형이면 0.
+    ///
+    /// 상대의 단계는 이렇게 역으로 알아낸다 — 메시지에는 slug 만 오고 단계는 오지
+    /// 않는다. 진화 사슬에서 몇 번째인지가 곧 단계다.
+    static func stage(ofDisplaySlug slug: String) -> Int {
+        for (_, chain) in evolutionChains {
+            if let index = chain.firstIndex(of: slug) { return index + 1 }
+        }
+        return 0
     }
 
     private func displaySlug(base: String, stage: Int) -> String {
@@ -1836,7 +1888,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 /// 등)로 위임해, 어느 쪽에서 바꾸든 동작·저장·메뉴바 갱신이 동일하다.
 extension AppDelegate: SettingsActionsDelegate {
     var settingsPetNickname: String? { PetNames.name(for: selectedPetSlug) }
-    var settingsPetSpeciesName: String { Self.koreanPetName(selectedPetSlug) }
+    /// 이름을 비웠을 때 돌아갈 이름. 보이는 쪽(진화형)이어야 안내가 맞는다.
+    var settingsPetSpeciesName: String { Self.koreanPetName(displayedPetSlug) }
 
     /// 지금 고른 펫에 이름을 지어 준다. 빈 값이면 지워 도감 이름으로 돌아간다.
     ///

@@ -94,7 +94,12 @@ final class BattleView: NSView {
     private let hitAt = 0.80        // a landing shot reaches the defender
     private let dodgeExit = 0.95    // a dodged shot leaves the far edge
 
-    init(mySheet: SpriteSheet, oppSheet: SpriteSheet, myName: String, oppName: String, myRole: BattleRole, outcome: BattleOutcome) {
+    /// `myStage`/`oppStage` 는 진화 단계(0 기본형, 1·2 진화형)다. 진화형은 더 크게
+    /// 그린다 — 같은 크기로 그리면 진화한 보람이 화면에 없다.
+    init(mySheet: SpriteSheet, oppSheet: SpriteSheet, myName: String, oppName: String,
+         myRole: BattleRole, outcome: BattleOutcome, myStage: Int = 0, oppStage: Int = 0) {
+        self.myStage = myStage
+        self.oppStage = oppStage
         self.mySheet = mySheet
         self.oppSheet = oppSheet
         self.myName = myName
@@ -234,6 +239,21 @@ final class BattleView: NSView {
     // the pet firing left sits at the right edge — and every shot has the full
     // width of the little screen to cross.
 
+    private let myStage: Int
+    private let oppStage: Int
+
+    /// 진화 단계별 배율. 기본형이 기준이고 단계가 오를수록 커진다.
+    ///
+    /// **위로** 넘쳐 잘리는 것은 괜찮다 — 덩치가 화면을 꽉 채우는 편이 "진화했다" 가
+    /// 잘 읽힌다. 반면 **좌우**로 화면 밖에 나가면 몸통이 뚝 잘려 연출이 아니라 버그로
+    /// 보이므로, 그리기 직전에 가로만 화면 안으로 민다.
+    private static let stageScales: [CGFloat] = [1.0, 1.3, 1.6]
+
+    private func scale(for role: BattleRole) -> CGFloat {
+        let stage = role == myRole ? myStage : oppStage
+        return Self.stageScales[min(max(stage, 0), Self.stageScales.count - 1)]
+    }
+
     private var petSize: CGFloat { min(bounds.height, bounds.width) * 0.46 }
     private var baseY: CGFloat { bounds.midY - 12 }
     private var leftPetCenter: CGPoint { CGPoint(x: petSize * 0.5 + 8, y: baseY) }
@@ -257,7 +277,7 @@ final class BattleView: NSView {
         let t = elapsed
 
         if t < introDuration {
-            drawPose(myPose, facingRight: true, at: leftPetCenter, flash: false)
+            drawPose(myPose, facingRight: true, at: leftPetCenter, flash: false, scale: scale(for: myRole))
             drawTopHUD(myHP: outcome.startHP, oppHP: outcome.startHP)
             drawCenterBanner("VS", color: .white)
             drawBorder()
@@ -313,7 +333,7 @@ final class BattleView: NSView {
         // Ease slightly inward as the camera starts to chase the shot.
         let chase = f > fireExit - 0.06 ? CGFloat((f - (fireExit - 0.06)) / 0.06) * (bounds.width * 0.10) * dir : 0
         let center = CGPoint(x: base.x + lunge + chase, y: base.y)
-        drawPose(pose(for: attacker), facingRight: facingRight, at: center, flash: false)
+        drawPose(pose(for: attacker), facingRight: facingRight, at: center, flash: false, scale: scale(for: attacker))
 
         if f >= windupEnd {
             let muzzle = base.x + dir * petSize * 0.5
@@ -343,7 +363,7 @@ final class BattleView: NSView {
         let center = CGPoint(x: base.x + hop + slideIn, y: base.y + dodge * petSize * 0.06)
         let facing = dodge > 0.5 ? shotGoesRight : facingRight // dodge → face away (= shot direction)
         let flash = !dodged && f >= hitAt && f < hitAt + 0.12
-        drawPose(pose(for: defender), facingRight: facing, at: center, flash: flash)
+        drawPose(pose(for: defender), facingRight: facing, at: center, flash: flash, scale: scale(for: defender))
 
         guard f >= impactEnter else { updateEmitter(active: false, at: .zero); return }
         if dodged {
@@ -360,7 +380,7 @@ final class BattleView: NSView {
     private func drawFinalFrame() {
         // Show the winner's pet at its home edge, under the banner.
         let (base, facing) = home(for: outcome.winner)
-        drawPose(pose(for: outcome.winner), facingRight: facing, at: base, flash: false)
+        drawPose(pose(for: outcome.winner), facingRight: facing, at: base, flash: false, scale: scale(for: outcome.winner))
         let hp = hpTimeline[hpTimeline.count - 1]
         drawTopHUD(myHP: myRole == .challenger ? hp.challenger : hp.accepter,
                    oppHP: myRole == .challenger ? hp.accepter : hp.challenger)
@@ -401,7 +421,8 @@ final class BattleView: NSView {
         NSColor(white: 1, alpha: 0.14).setStroke(); p.lineWidth = 2; p.stroke()
     }
 
-    private func drawPose(_ frames: SpriteAnimationFrames?, facingRight: Bool, at center: CGPoint, flash: Bool) {
+    private func drawPose(_ frames: SpriteAnimationFrames?, facingRight: Bool, at center: CGPoint,
+                          flash: Bool, scale: CGFloat = 1) {
         guard let frames, !frames.images.isEmpty else { return }
         let totalMs = frames.durationsMs.reduce(0, +)
         var index = 0
@@ -410,7 +431,14 @@ final class BattleView: NSView {
             for (i, d) in frames.durationsMs.enumerated() { if acc < d { index = i; break }; acc -= d }
         }
         let image = frames.images[min(index, frames.images.count - 1)]
-        let rect = NSRect(x: center.x - petSize / 2, y: center.y - petSize / 2, width: petSize, height: petSize)
+        // 발을 바닥에 두고 위로 키운다. 가운데를 기준으로 키우면 발이 바닥을 뚫는다.
+        let side = petSize * scale
+        let bottom = center.y - petSize / 2
+        // 가로는 화면 안으로 민다. 진화형은 기본형보다 훨씬 넓어 왼쪽 끝에서 몸통이
+        // 잘려 나갔다. 화면보다 넓으면 밀 수 없으니 그때는 가운데로 둔다.
+        var x = center.x - side / 2
+        if side <= bounds.width { x = min(max(x, 0), bounds.width - side) }
+        let rect = NSRect(x: x, y: bottom, width: side, height: side)
         let ctx = NSGraphicsContext.current?.cgContext
         ctx?.saveGState()
         // Sprites face right un-flipped; flip to face left.
