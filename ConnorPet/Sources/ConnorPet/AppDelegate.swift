@@ -86,7 +86,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // (see scripts/build_sheet.py's PETS list, which is the source of truth for
     // this set). Display names shown in the menu come from each pet's own
     // manifest rather than being duplicated here.
-    private static let availablePetSlugs = ["totodile", "ditto", "charmander", "squirtle", "geodude", "eevee", "chikorita", "torchic", "togepi", "tepig", "snorlax", "gengar", "diglett", "pikachu", "bichon"]
+    private static let availablePetSlugs = ["totodile", "ditto", "charmander", "squirtle", "geodude", "eevee", "chikorita", "torchic", "togepi", "tepig", "snorlax", "gengar", "diglett", "pikachu", "larvitar", "dratini", "bichon"]
 
     /// 대전을 하지 않는 펫. 흰 비숑은 실제 반려견이라 **동물보호 차원에서 대전 불가** —
     /// 신청/수락/메뉴가 모두 이 목록을 보고 막힌다(불꽃 발사체로 서로를 쏘는 대전은
@@ -179,6 +179,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         "eevee": ["vaporeon"],
         "diglett": ["dugtrio"],
         "pikachu": ["raichu"],
+        "larvitar": ["pupitar", "tyranitar"],
+        "dratini": ["dragonair", "dragonite"],
         "ditto": [],
         "togepi": [],
         "snorlax": [],

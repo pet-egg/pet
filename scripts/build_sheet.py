@@ -314,6 +314,30 @@ PETS = [
         ),
     },
     {
+        "slug": "larvitar",
+        "dex_id": 246,
+        "out_dir_name": "larvitar.codex-pet",
+        "id": "larvitar-larvitar",
+        "display_name": "애버라스 (Larvitar)",
+        "description": (
+            "Custom connor-pet build: Larvitar / 애버라스 reacts to live Orca agent/project status, "
+            "skinned as Pokémon status conditions — blocked/waiting=Freeze, done=Infatuation, "
+            "nothing=Sleep, working=running (unchanged). Built from PokeAPI gen5 battle sprites."
+        ),
+    },
+    {
+        "slug": "dratini",
+        "dex_id": 147,
+        "out_dir_name": "dratini.codex-pet",
+        "id": "dratini-miyong",
+        "display_name": "미뇽 (Dratini)",
+        "description": (
+            "Custom connor-pet build: Dratini / 미뇽 reacts to live Orca agent/project status, "
+            "skinned as Pokémon status conditions — blocked/waiting=Freeze, done=Infatuation, "
+            "nothing=Sleep, working=running (unchanged). Built from PokeAPI gen5 battle sprites."
+        ),
+    },
+    {
         # 포켓몬이 아닌 절차적 펫. 도감번호가 없고, 도트를 직접 찍어 만든다
         # (build_bichon_frames). 실제 반려견이라 **대전은 하지 않는다**(동물보호) —
         # 그 게이팅은 앱 쪽 AppDelegate.nonBattlePetSlugs 에 있다.
@@ -360,6 +384,10 @@ _EVOLUTIONS = [
     ("vaporeon", 134, "샤미드 (Vaporeon)"),
     ("dugtrio", 51, "닥트리오 (Dugtrio)"),
     ("raichu", 26, "라이츄 (Raichu)"),
+    ("pupitar", 247, "데기라스 (Pupitar)"),
+    ("tyranitar", 248, "마기라스 (Tyranitar)"),
+    ("dragonair", 148, "신뇽 (Dragonair)"),
+    ("dragonite", 149, "망나뇽 (Dragonite)"),
 ]
 for _slug, _dex, _name in _EVOLUTIONS:
     PETS.append({

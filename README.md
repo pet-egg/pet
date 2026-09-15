@@ -1,6 +1,6 @@
 # pet
 
-실제 [Orca](https://github.com/stablyai/orca), [Claude Code](https://claude.com/claude-code), 또는 [Claude 데스크톱 앱](https://claude.ai/download)의 프로젝트/에이전트 상태에 반응하는 데스크톱 펫 — 리아코 (Totodile), 메타몽 (Ditto), 파이리 (Charmander), 꼬부기 (Squirtle), 꼬마돌 (Geodude), 이브이 (Eevee), 치코리타 (Chikorita), 아차모 (Torchic), 토게피 (Togepi), 뚜꾸리 (Tepig), 잠만보 (Snorlax), 팬텀 (Gengar), 디그다 (Diglett), 피카츄 (Pikachu), 그리고 흰 **비숑 (Bichon)** 중 메뉴바 아이콘에서 언제든 전환 가능합니다. 펫은 **대분류(포켓몬 / 동물 / 메이플스토리)**로 묶여 있고, 펫 선택 UI(설정 창·첫 실행 마법사)가 이 그룹으로 구분해 보여줍니다. (비숑만 포켓몬이 아니라 직접 도트로 그린 **동물** 캐릭터이고, **실제 반려견이라 대전은 하지 않습니다** — 아래 대전 항목 참고.) Orca에 임포트하는 `.codex-pet` 번들이 아니라, **완전히 별개의 macOS 앱**으로 만들었습니다. Orca/Claude Code/Claude 앱과 다른 프로세스로 떠 있으면서, 바깥에서 그 상태를 읽어옵니다. 여기에 더해, 같은 Wi-Fi에서 앱을 켜둔 사람끼리 **디지몬 다마고치 스타일 1:1 대전**도 할 수 있습니다 (아래 "같은 wifi에서 대전하기" 참고).
+실제 [Orca](https://github.com/stablyai/orca), [Claude Code](https://claude.com/claude-code), 또는 [Claude 데스크톱 앱](https://claude.ai/download)의 프로젝트/에이전트 상태에 반응하는 데스크톱 펫 — 리아코 (Totodile), 메타몽 (Ditto), 파이리 (Charmander), 꼬부기 (Squirtle), 꼬마돌 (Geodude), 이브이 (Eevee), 치코리타 (Chikorita), 아차모 (Torchic), 토게피 (Togepi), 뚜꾸리 (Tepig), 잠만보 (Snorlax), 팬텀 (Gengar), 디그다 (Diglett), 피카츄 (Pikachu), 애버라스 (Larvitar), 미뇽 (Dratini), 그리고 흰 **비숑 (Bichon)** 중 메뉴바 아이콘에서 언제든 전환 가능합니다. 펫은 **대분류(포켓몬 / 동물 / 메이플스토리)**로 묶여 있고, 펫 선택 UI(설정 창·첫 실행 마법사)가 이 그룹으로 구분해 보여줍니다. (비숑만 포켓몬이 아니라 직접 도트로 그린 **동물** 캐릭터이고, **실제 반려견이라 대전은 하지 않습니다** — 아래 대전 항목 참고.) Orca에 임포트하는 `.codex-pet` 번들이 아니라, **완전히 별개의 macOS 앱**으로 만들었습니다. Orca/Claude Code/Claude 앱과 다른 프로세스로 떠 있으면서, 바깥에서 그 상태를 읽어옵니다. 여기에 더해, 같은 Wi-Fi에서 앱을 켜둔 사람끼리 **디지몬 다마고치 스타일 1:1 대전**도 할 수 있습니다 (아래 "같은 wifi에서 대전하기" 참고).
 
 에이전트의 **실제 토큰 사용량**을 읽어와 펫 아래에 경험치(XP) 바로 보여주고, 경험치가 쌓이면 펫이 **진화**합니다 (리아코→크로콘→장크로다일 등). 자세한 내용은 아래 "토큰 사용량 경험치 바 & 진화" 참고.
 
@@ -394,6 +394,8 @@ Claude Code는 세션마다 전체 대화 기록을 `~/.claude/projects/<cwd-slu
   | 이브이 (Eevee) | 샤미드 (Vaporeon) | — |
   | 디그다 (Diglett) | 닥트리오 (Dugtrio) | — |
   | 피카츄 (Pikachu) | 라이츄 (Raichu) | — |
+  | 애버라스 (Larvitar) | 데기라스 (Pupitar) | 마기라스 (Tyranitar) |
+  | 미뇽 (Dratini) | 신뇽 (Dragonair) | 망나뇽 (Dragonite) |
   | 메타몽 (Ditto) | — | — |
   | 토게피 (Togepi) | — | — |
   | 뚜꾸리 (Tepig) | — | — |
@@ -425,6 +427,8 @@ snorlax.codex-pet/       잠만보(Snorlax) Orca 임포트용 번들 — 위와 
 gengar.codex-pet/        팬텀(Gengar) Orca 임포트용 번들 — 위와 동일한 구조
 diglett.codex-pet/       디그다(Diglett) Orca 임포트용 번들 — 위와 동일한 구조
 pikachu.codex-pet/       피카츄(Pikachu) Orca 임포트용 번들 — 위와 동일한 구조
+larvitar.codex-pet/      애버라스(Larvitar) Orca 임포트용 번들 — 위와 동일한 구조
+dratini.codex-pet/       미뇽(Dratini) Orca 임포트용 번들 — 위와 동일한 구조
 
 scripts/build_sheet.py   재현 가능한 생성 스크립트 — `PETS` 리스트에 등록된 각 포켓몬마다
                           PokeAPI의 5세대 배틀 스프라이트를 받아서 `<slug>.codex-pet/`과
