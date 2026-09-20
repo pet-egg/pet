@@ -30,6 +30,18 @@ brew install --cask pet-egg/pet/pet
 
 > 서명·공증을 하지 않은 배포본이라, 그냥 더블클릭하면 macOS 가 "손상되었기 때문에 열 수 없음"이라며 앱을 휴지통으로 보내버립니다. 위 스크립트/Cask 가 대신 `xattr` 로 quarantine 을 제거해 이 관문을 넘겨줍니다. 손으로 설치하고 싶으면 아래 **"dmg로 빌드해서 배포하기"** 의 수동 절차를 참고하세요.
 
+### Windows
+
+**윈도우용 버전**(`windows/`)은 macOS 앱을 **Python + PySide6(Qt)** 로 포팅한 별개 빌드입니다.
+상태 판정 로직과 펫 스프라이트는 macOS 앱과 그대로 공유하고, UI 만 Qt 로 다시 그렸습니다.
+[릴리스](https://github.com/pet-egg/pet/releases) 에서 `pet.exe` 를 받아 실행하면 트레이에 상주하며,
+`~/.claude` 를 읽어 Claude Code 상태에 반응합니다(달리기/얼음/헤롱헤롱/실패/잠듦 + 경험치·진화).
+
+- 서명이 없어 SmartScreen 이 "알 수 없는 게시자" 경고를 띄울 수 있습니다 — **추가 정보 → 실행**으로 넘어가세요.
+- 빌드는 `win-v*` 태그 푸시로 GitHub Actions 가 자동으로 합니다(예: `git push origin win-v0.1.0`).
+- 개발·빌드·테스트 자세한 절차는 [`windows/README.md`](windows/README.md) 참고.
+- macOS 전용 기능(대전·Claude Desktop AX 감지·Sparkle 자동 업데이트·Orca 소스)은 아직 포팅되지 않았습니다.
+
 ---
 
 ## 어떻게 가능한가
@@ -489,6 +501,14 @@ ConnorPet/                 진짜 결과물: 독립 실행형 macOS 앱
                                      + 진화형 14종 (croconaw, feraligatr, charmeleon, charizard, wartortle,
                                      blastoise, graveler, golem, bayleef, meganium, combusken, blaziken, vaporeon,
                                      dugtrio, raichu)
+
+windows/                   윈도우용 버전: macOS 앱을 Python + PySide6(Qt)로 포팅한 별개 빌드.
+  pet_win/                   상태 워처·XP 모델·애니메이션 우선순위·스프라이트 로딩을 파이썬으로 포팅
+                              (ClaudeCodeStatusWatcher/TokenUsage/PetAnimationState 대응). 펫 스프라이트는
+                              위 ConnorPet/Resources/pets 를 그대로 재사용(소스 오브 트루스 한 곳).
+  main.py / pet.spec         진입점 + PyInstaller 스펙(pet.exe 로 묶음, pets/ 리소스 번들 포함)
+  tests/                     headless(offscreen) 테스트 — 로직/세션파싱/17종 렌더 스모크
+  README.md                  개발·빌드·테스트 절차
 ```
 
 ## 실행 방법

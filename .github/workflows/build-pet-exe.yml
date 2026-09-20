@@ -1,0 +1,104 @@
+name: Build Pet EXE (Windows)
+
+# 윈도우용 데스크톱 펫(windows/)을 PyInstaller 로 단일 pet.exe 로 빌드해
+# 릴리스에 올리는 파이프라인. macOS 빌드(build-pet-dmg.yml)와 태그 네임스페이스를
+# 분리한다: 여기는 `win-v*` 태그로만 트리거된다(예: git push origin win-v0.1.0).
+# 빌드 전에 headless(offscreen) 테스트로 로직·리소스 로딩·렌더를 검증한다.
+on:
+  push:
+    tags:
+      - 'win-v*'
+
+permissions:
+  contents: read
+
+jobs:
+  build-exe:
+    runs-on: windows-latest
+    permissions:
+      contents: write        # 릴리스 생성/업로드
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0      # 태그로 버전을 계산하므로 전체 히스토리 필요
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install PySide6==6.11.2 Pillow pyinstaller pytest
+
+      - name: Run headless tests
+        env:
+          QT_QPA_PLATFORM: offscreen
+        working-directory: windows
+        run: python -m pytest tests -v
+
+      - name: Build pet.exe
+        working-directory: windows
+        run: pyinstaller pet.spec --noconfirm
+
+      - name: Smoke-test built exe (offscreen, 5s)
+        working-directory: windows
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          # 번들이 리소스를 못 찾으면 즉시 죽으므로, 5초 실행 후 살아있으면 통과.
+          $p = Start-Process -FilePath ".\dist\pet.exe" -PassThru
+          Start-Sleep -Seconds 5
+          if ($p.HasExited) {
+            Write-Error "pet.exe 가 5초 내에 종료됨 (exit=$($p.ExitCode)) — 번들/리소스 문제 의심"
+            exit 1
+          }
+          Stop-Process -Id $p.Id -Force
+          Write-Host "pet.exe 5초 생존 — 스모크 통과"
+
+      - name: Package zip
+        working-directory: windows
+        shell: pwsh
+        run: |
+          $ver = "${env:GITHUB_REF_NAME}" -replace '^win-v',''
+          Copy-Item dist\pet.exe pet.exe
+          Compress-Archive -Path pet.exe -DestinationPath "pet-windows-x64.zip" -Force
+          Write-Host "버전 $ver"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pet-windows
+          path: |
+            windows/dist/pet.exe
+            windows/pet-windows-x64.zip
+
+      - name: Create release & upload exe
+        if: startsWith(github.ref, 'refs/tags/win-v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd windows
+          cp dist/pet.exe pet.exe
+          # 윈도우 릴리스는 macOS 의 latest(pet.dmg)를 덮어쓰지 않도록 --latest=false.
+          gh release create "$GITHUB_REF_NAME" pet.exe pet-windows-x64.zip \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$GITHUB_REF_NAME (Windows)" \
+            --notes "윈도우용 데스크톱 펫 빌드 ($GITHUB_REF_NAME). pet.exe 를 받아 실행하세요." \
+            --latest=false \
+          || gh release upload "$GITHUB_REF_NAME" pet.exe pet-windows-x64.zip --clobber --repo "$GITHUB_REPOSITORY"
+
+      - name: Job summary
+        shell: bash
+        run: |
+          {
+            echo "## pet.exe (Windows)"
+            echo ""
+            echo "PyInstaller 로 묶은 단일 실행 파일입니다. 펫 17종을 트레이 메뉴에서 전환하세요."
+            echo ""
+            echo "코드서명이 없어 Windows SmartScreen 이 '알 수 없는 게시자' 경고를 띄울 수 있습니다 — '추가 정보 → 실행'으로 넘어가세요."
+          } >> "$GITHUB_STEP_SUMMARY"
