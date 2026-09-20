@@ -1,0 +1,60 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/pet-egg/pet/shared/pet-manifest.schema.json",
+  "title": "pet.json manifest",
+  "description": "assets/pets/<slug>/pet.json 스키마. mac(Swift)·windows(Python) 두 구현이 이 형식을 읽는다. 스프라이트 시트는 frame.width x frame.height 크기의 칸을 열=프레임, 행=애니메이션으로 자른다.",
+  "type": "object",
+  "required": ["spritesheetPath", "frame", "animations"],
+  "properties": {
+    "id": {"type": "string", "description": "고유 ID (예: totodile-riako)"},
+    "displayName": {"type": "string", "description": "표시 이름 (예: 리아코 (Totodile))"},
+    "description": {"type": "string"},
+    "spritesheetPath": {"type": "string", "description": "시트 png 파일명 (보통 spritesheet.png)"},
+    "frame": {
+      "type": "object",
+      "required": ["width", "height"],
+      "properties": {
+        "width": {"type": "integer", "minimum": 1},
+        "height": {"type": "integer", "minimum": 1}
+      }
+    },
+    "fps": {"type": "number", "description": "frameDurationsMs 가 없을 때의 기본 프레임 속도"},
+    "defaultAnimation": {"type": "string", "description": "요청한 애니메이션이 없을 때 폴백"},
+    "animations": {
+      "type": "object",
+      "description": "이름→정의. 상태 표시에 쓰는 이름: idle/running/waiting/review/failed. 그 외 jumping/waving/running-left/running-right, 속성기 fire-breath/water-gun.",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["row", "frames"],
+        "properties": {
+          "row": {"type": "integer", "minimum": 0, "description": "시트에서의 행 인덱스"},
+          "frames": {"type": "integer", "minimum": 1, "description": "이 애니메이션의 프레임(열) 수"},
+          "frameDurationsMs": {
+            "type": "array",
+            "items": {"type": "number"},
+            "description": "프레임별 지속시간(ms). 길이는 frames 와 같아야 하며, 없으면 1000/fps 로 균등 분배."
+          }
+        }
+      }
+    },
+    "skill": {
+      "type": "object",
+      "description": "속성기가 있는 펫만. 이펙트 이미지와 프레임별 입 위치/스케일.",
+      "properties": {
+        "row": {"type": "string", "description": "속성기 애니메이션 이름 (예: fire-breath)"},
+        "effect": {"type": "string", "description": "assets/effects/ 의 이펙트 파일명"},
+        "mouthByFrame": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "x": {"type": "number"},
+              "y": {"type": "number"},
+              "grow": {"type": "number"}
+            }
+          }
+        }
+      }
+    }
+  }
+}

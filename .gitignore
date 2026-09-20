@@ -1,16 +1,30 @@
-scripts/.cache/
-scripts/__pycache__/
-ConnorPet/.build/
-ConnorPet/.swiftpm/
 .DS_Store
-.venv-win-test/
-windows/build/
-windows/dist/
-windows/__pycache__/
-windows/**/__pycache__/
 *.pyc
-windows/pet.ico
-windows/pet.exe
-windows/pet-windows-x64.zip
-windows/*.spec.bak
 .pytest_cache/
+.venv-win-test/
+
+# ── 툴링 ──
+tooling/scripts/.cache/
+tooling/scripts/__pycache__/
+
+# ── mac 앱 (apps/macos) ──
+apps/macos/.build/
+apps/macos/.swiftpm/
+
+# ── windows 앱 (apps/windows) ──
+apps/windows/build/
+apps/windows/dist/
+apps/windows/__pycache__/
+apps/windows/**/__pycache__/
+apps/windows/pet.ico
+apps/windows/pet.exe
+apps/windows/pet-windows-x64.zip
+apps/windows/*.spec.bak
+
+# ── 모노레포 생성물 / 미러 (정본은 assets/ · tooling/hooks/) ──
+# mac 타깃의 SwiftPM 번들 리소스(pets·effects·hooks)는 정본에서 sync_assets.py 가 채운다.
+apps/macos/Sources/ConnorPet/Resources/pets/
+apps/macos/Sources/ConnorPet/Resources/effects/
+apps/macos/Sources/ConnorPet/Resources/hooks/
+# Orca 임포트 번들은 assets/pets 에서 생성한다 (make orca / sync_assets.py).
+dist/
