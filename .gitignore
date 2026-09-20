@@ -3,3 +3,14 @@ scripts/__pycache__/
 ConnorPet/.build/
 ConnorPet/.swiftpm/
 .DS_Store
+.venv-win-test/
+windows/build/
+windows/dist/
+windows/__pycache__/
+windows/**/__pycache__/
+*.pyc
+windows/pet.ico
+windows/pet.exe
+windows/pet-windows-x64.zip
+windows/*.spec.bak
+.pytest_cache/
