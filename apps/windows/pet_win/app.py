@@ -20,7 +20,9 @@ from PySide6.QtWidgets import (QApplication, QMenu, QSystemTrayIcon, QWidget)
 from . import animation as anim
 from . import petmeta
 from . import resources
+from . import updater as updater_mod
 from . import xpmodel
+from ._version import __version__
 from .spritesheet import SpriteSheet
 from .status_watcher import ClaudeCodeStatusWatcher
 
@@ -58,6 +60,9 @@ class PetWindow(QWidget):
         self.pet_tokens = self._load_tokens()
 
         self.watcher = ClaudeCodeStatusWatcher()
+        self.updater = None          # setup_updater()에서 생성(Windows frozen 만)
+        self._tray = None            # main()이 트레이 생성 후 주입
+        self._manual_check = False   # 수동 "업데이트 확인"이면 결과를 풍선으로 알림
         self.sheet_cache = {}
         self.current_display_slug = ""
         self.sheet: SpriteSheet | None = None
@@ -279,6 +284,17 @@ class PetWindow(QWidget):
         reset.triggered.connect(self.reset_xp)
         menu.addAction(reset)
 
+        # 자동 업데이트(Windows frozen 에서만 노출).
+        if self.updater is not None:
+            menu.addSeparator()
+            if self.updater.has_staged():
+                install = QAction(f"업데이트 설치 (v{self.updater.staged_version})", self)
+                install.triggered.connect(self.apply_update)
+                menu.addAction(install)
+            check = QAction("업데이트 확인", self)
+            check.triggered.connect(self.check_for_updates)
+            menu.addAction(check)
+
         menu.addSeparator()
         quit_act = QAction("종료", self)
         quit_act.triggered.connect(QApplication.instance().quit)
@@ -306,6 +322,46 @@ class PetWindow(QWidget):
         self._save_tokens()
         self._load_display_pet()
         self.update()
+
+    # ── 자동 업데이트 (Sparkle 대응, Windows frozen 전용) ──────────
+    def setup_updater(self, tray):
+        """트레이 생성 후 main()이 호출. 지원 환경에서만 업데이터를 켠다."""
+        self._tray = tray
+        if not updater_mod.is_supported():
+            return
+        updater_mod.cleanup_old()   # 이전 업데이트 잔재(pet.old.exe) 정리
+        self.updater = updater_mod.Updater(current_version=__version__)
+        self.updater.updateAvailable.connect(self._on_update_available)
+        self.updater.checkFinished.connect(self._on_check_finished)
+        # 시작 3초 뒤 조용히 한 번 확인(Sparkle 의 실행-시 조용한 확인과 동일).
+        QTimer.singleShot(3000, lambda: self.updater.check_async(silent=True))
+
+    def check_for_updates(self):
+        """트레이 메뉴 "업데이트 확인" — 결과를 풍선으로 알린다."""
+        if not self.updater:
+            return
+        self._manual_check = True
+        self.updater.check_async(silent=False)
+
+    def _on_update_available(self, version):
+        # 팝업 없이 메뉴로만 알림(방해 최소화). 메뉴에 "설치" 항목이 생긴다.
+        if self._tray:
+            self._tray.setContextMenu(self._build_menu())
+            self._tray.showMessage(
+                "pet 업데이트", f"새 버전 {version} 준비됨 — 트레이 메뉴에서 설치하세요.",
+                QSystemTrayIcon.Information, 6000)
+        self._manual_check = False
+
+    def _on_check_finished(self, found, message):
+        # 수동 확인일 때만 결과 풍선(자동 확인은 조용히).
+        if self._manual_check and self._tray:
+            self._tray.showMessage("pet 업데이트", message,
+                                   QSystemTrayIcon.Information, 4000)
+        self._manual_check = False
+
+    def apply_update(self):
+        if self.updater and self.updater.apply_and_restart():
+            QApplication.instance().quit()
 
     def tray_icon(self) -> QIcon:
         """트레이 아이콘 = 현재 펫의 idle 첫 프레임."""
@@ -342,11 +398,14 @@ def main():
         tray_icon = win.tray_icon()
     tray = QSystemTrayIcon(tray_icon, app)
     tray.setToolTip("pet — 데스크톱 펫")
-    tray.setContextMenu(win._build_menu())
     tray.activated.connect(lambda reason: win.raise_())
     tray.show()
     # 트레이 참조 유지(GC 방지).
     win._tray = tray
+
+    # 자동 업데이트 켜기(Windows frozen 전용) 후 메뉴를 다시 그려 항목 반영.
+    win.setup_updater(tray)
+    tray.setContextMenu(win._build_menu())
 
     return app.exec()
 

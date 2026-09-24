@@ -36,7 +36,9 @@ a = Analysis(
     pathex=[here],
     binaries=[],
     datas=datas,
-    hiddenimports=[],
+    # PyNaCl(업데이트 Ed25519 검증)의 네이티브 백엔드 — PyInstaller 훅이 대개 잡지만
+    # 명시해 둔다.
+    hiddenimports=['nacl', 'nacl.signing', 'nacl.exceptions', '_cffi_backend'],
     hookspath=[],
     runtime_hooks=[],
     excludes=['tkinter'],

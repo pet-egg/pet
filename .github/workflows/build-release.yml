@@ -218,13 +218,23 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install PySide6==6.11.2 Pillow pyinstaller pytest
+          pip install PySide6==6.11.2 PyNaCl Pillow pyinstaller pytest
 
       - name: Run headless tests
         env:
           QT_QPA_PLATFORM: offscreen
         working-directory: apps/windows
         run: python -m pytest tests -v
+
+      - name: Inject version (from tag)
+        working-directory: apps/windows
+        shell: pwsh
+        run: |
+          # 앱이 자기 버전을 알아야 업데이터가 최신과 비교한다. 태그(v1.2.3)→1.2.3.
+          $ver = "${env:GITHUB_REF_NAME}" -replace '^v',''
+          if (-not $ver) { $ver = "0.0.0" }
+          Set-Content -Path pet_win/_version.py -Value "__version__ = `"$ver`"" -Encoding UTF8
+          Get-Content pet_win/_version.py
 
       - name: Build pet.exe
         working-directory: apps/windows
@@ -284,20 +294,59 @@ jobs:
         with:
           name: pet-windows
           path: dist
+
+      # 윈도우 자동 업데이트용 매니페스트. 맥 appcast 와 **같은 EdDSA 개인키**로
+      # pet.exe 를 Ed25519 서명해 windows-appcast.json(버전·URL·서명)을 만든다.
+      # 앱은 이걸 releases/latest/download/windows-appcast.json 에서 읽어 검증한다.
+      # 시크릿이 없거나 키 형식이 예상과 다르면 **릴리스는 막지 않고** 매니페스트만
+      # 건너뛴다(그 릴리스는 윈도우 자동 업데이트가 비활성일 뿐, dmg/exe 는 정상 배포).
+      - name: Sign pet.exe → windows-appcast.json
+        env:
+          SPARKLE_EDDSA_PRIVATE_KEY: ${{ secrets.SPARKLE_EDDSA_PRIVATE_KEY }}
+        run: |
+          if [ -z "$SPARKLE_EDDSA_PRIVATE_KEY" ]; then
+            echo "::notice::SPARKLE_EDDSA_PRIVATE_KEY 없음 — windows-appcast.json 생략(윈도우 자동 업데이트 비활성)."
+            exit 0
+          fi
+          pip install --quiet pynacl || { echo "::warning::pynacl 설치 실패 — 매니페스트 생략"; exit 0; }
+          python3 - <<'PY' || echo "::warning::pet.exe 서명 실패 — windows-appcast.json 생략(윈도우 자동 업데이트 이번 릴리스 비활성)"
+          import base64, json, os, sys
+          import nacl.signing
+          EXPECT = "5zPY3WaXtB6g72hVacYErOpHAnHYAbCcwVGWjK1p8R4="
+          raw = base64.b64decode(os.environ["SPARKLE_EDDSA_PRIVATE_KEY"])
+          seed = raw[:32] if len(raw) in (32, 64) else None
+          if seed is None:
+              sys.exit(f"unexpected private key length {len(raw)}")
+          sk = nacl.signing.SigningKey(seed)
+          pub = base64.b64encode(bytes(sk.verify_key)).decode()
+          if pub != EXPECT:
+              sys.exit(f"derived pubkey {pub} != embedded {EXPECT} (key/format mismatch)")
+          data = open("dist/pet.exe", "rb").read()
+          sig = base64.b64encode(sk.sign(data).signature).decode()
+          tag = os.environ["GITHUB_REF_NAME"]; repo = os.environ["GITHUB_REPOSITORY"]
+          json.dump({
+              "version": tag.lstrip("v"),
+              "url": f"https://github.com/{repo}/releases/download/{tag}/pet.exe",
+              "edSignature": sig,
+              "notes": f"pet {tag}",
+          }, open("dist/windows-appcast.json", "w"), ensure_ascii=False, indent=2)
+          print("wrote dist/windows-appcast.json for", tag)
+          PY
+
       - name: Create release & upload pet.dmg + pet.exe
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # 맥(pet.dmg)·윈도우(pet.exe/zip)를 같은 릴리스에. 이미 있는 태그면 create 가
-          # 실패 → 그때는 asset 만 덮어쓴다(--clobber).
-          gh release create "$GITHUB_REF_NAME" \
-            dist/pet.dmg dist/pet.exe dist/pet-windows-x64.zip \
+          # 맥(pet.dmg)·윈도우(pet.exe/zip) + (있으면) 윈도우 업데이트 매니페스트를 같은
+          # 릴리스에. 이미 있는 태그면 create 가 실패 → 그때는 asset 만 덮어쓴다(--clobber).
+          ASSETS="dist/pet.dmg dist/pet.exe dist/pet-windows-x64.zip"
+          [ -f dist/windows-appcast.json ] && ASSETS="$ASSETS dist/windows-appcast.json"
+          gh release create "$GITHUB_REF_NAME" $ASSETS \
             --repo "$GITHUB_REPOSITORY" \
             --title "$GITHUB_REF_NAME" \
-            --notes "맥(pet.dmg)·윈도우(pet.exe) 통합 릴리스 ($GITHUB_REF_NAME). 맥은 Sparkle 자동 업데이트 지원." \
+            --notes "맥(pet.dmg)·윈도우(pet.exe) 통합 릴리스 ($GITHUB_REF_NAME). 맥은 Sparkle, 윈도우는 인앱 업데이터로 자동 업데이트." \
             --latest \
-          || gh release upload "$GITHUB_REF_NAME" \
-               dist/pet.dmg dist/pet.exe dist/pet-windows-x64.zip \
+          || gh release upload "$GITHUB_REF_NAME" $ASSETS \
                --clobber --repo "$GITHUB_REPOSITORY"
 
   # Homebrew Cask(pet-egg/homebrew-pet)의 version/sha256 을 이번 릴리스로 갱신한다.
