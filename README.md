@@ -32,15 +32,30 @@ brew install --cask pet-egg/pet/pet
 
 ### Windows
 
-**윈도우용 버전**(`windows/`)은 macOS 앱을 **Python + PySide6(Qt)** 로 포팅한 별개 빌드입니다.
-상태 판정 로직과 펫 스프라이트는 macOS 앱과 그대로 공유하고, UI 만 Qt 로 다시 그렸습니다.
-[릴리스](https://github.com/pet-egg/pet/releases) 에서 `pet.exe` 를 받아 실행하면 트레이에 상주하며,
+**윈도우용 버전**(`apps/windows/`)은 macOS 앱을 **Python + PySide6(Qt)** 로 포팅한 빌드입니다.
+상태 판정 로직과 펫 스프라이트는 macOS 앱과 공유하고, UI 만 Qt 로 다시 그렸습니다.
 `~/.claude` 를 읽어 Claude Code 상태에 반응합니다(달리기/얼음/헤롱헤롱/실패/잠듦 + 경험치·진화).
 
-- 서명이 없어 SmartScreen 이 "알 수 없는 게시자" 경고를 띄울 수 있습니다 — **추가 정보 → 실행**으로 넘어가세요.
-- 빌드는 `win-v*` 태그 푸시로 GitHub Actions 가 자동으로 합니다(예: `git push origin win-v0.1.0`).
+**PowerShell 한 줄로 설치** (맥의 `curl … | bash` 에 대응):
+
+```powershell
+irm https://raw.githubusercontent.com/pet-egg/pet/main/install.ps1 | iex
+```
+
+안정화(stable) 버전:
+
+```powershell
+$env:PET_CHANNEL='stable'; irm https://raw.githubusercontent.com/pet-egg/pet/main/install.ps1 | iex
+```
+
+`install.ps1` 은 최신 `pet.exe` 를 받아 `%LOCALAPPDATA%\pet` 에 설치하고 시작 메뉴 바로가기를 만든 뒤 실행합니다(이미 있으면 종료 후 교체 = 업데이트 겸용).
+
+- **보안 경고 처리**: 미서명 exe 라 브라우저로 받아 더블클릭하면 SmartScreen("Windows에서 PC를 보호했습니다")·"알 수 없는 게시자" 경고가 뜹니다. 위 스크립트는 **브라우저가 아니라 PowerShell 로 받아 MOTW(Mark of the Web)가 안 붙고**, 추가로 `Unblock-File`(맥의 `xattr -d com.apple.quarantine` 대응)로 벗기며, 유저 폴더에 설치해 관리자 권한(UAC)도 필요 없어 **이 경고들이 뜨지 않습니다**. (다만 미서명이라 백신 오탐은 별개 이슈입니다.)
+- 릴리스에서 직접 받으려면 [릴리스](https://github.com/pet-egg/pet/releases) 의 `pet.exe`. 이때는 위 SmartScreen 경고가 뜨니 **추가 정보 → 실행**으로 넘기거나, 받은 뒤 PowerShell 에서 `Unblock-File pet.exe` 하세요.
 - 개발·빌드·테스트 자세한 절차는 [`apps/windows/README.md`](apps/windows/README.md) 참고.
-- macOS 전용 기능(대전·Claude Desktop AX 감지·Sparkle 자동 업데이트·Orca 소스)은 아직 포팅되지 않았습니다.
+- macOS 전용 기능(대전·Claude Desktop AX 감지·Sparkle 자동 업데이트·Orca 소스)은 아직 포팅되지 않았습니다. 윈도우 자동 업데이트는 미구현(재설치로 갱신).
+
+> 릴리스는 맥·윈도우 공용입니다 — `v*` 태그 하나가 `pet.dmg`(맥)와 `pet.exe`(윈도우)를 함께 빌드해 같은 릴리스에 올립니다.
 
 ---
 
@@ -543,7 +558,7 @@ swift run
 
 ## dmg로 빌드해서 배포하기 (GitHub Actions)
 
-`swift run`으로 직접 띄우는 대신 더블클릭으로 설치되는 `.dmg`가 필요하면 `build-pet-dmg.yml` 워크플로우를 씁니다. **`cd apps/macos && swift run`과 똑같이 12종 펫이 모두 든 단일 앱**(메뉴바에서 전환)을 빌드하며, 산출물 이름은 전부 `pet`으로 고정됩니다:
+`swift run`으로 직접 띄우는 대신 더블클릭으로 설치되는 `.dmg`가 필요하면 `build-release.yml` 워크플로우가 `v*` 태그로 **맥(pet.dmg)·윈도우(pet.exe)를 함께** 빌드해 같은 릴리스에 올립니다. 맥은 `cd apps/macos && swift run`과 똑같이 17종 펫이 모두 든 단일 앱(메뉴바에서 전환)이며, 산출물 이름은 `pet`으로 고정됩니다:
 
 1. GitHub 저장소의 **Actions** 탭 → **Build Pet DMG** 워크플로우 선택
 2. **Run workflow** 클릭 → 실행 (고를 옵션 없음 — 항상 전체 펫 빌드)
@@ -613,7 +628,7 @@ curl -fsSL "https://raw.githubusercontent.com/pet-egg/pet/main/install.sh?$(date
 
 **최초 1회 준비**
 
-1. **개인키를 Secret 에 등록** — 공개키와 짝이 되는 개인키는 최초 `generate_keys` 실행 때 만든 사람의 **로그인 키체인**에 있습니다. export 해서(`generate_keys -x private.key`) 저장소 Secret **`SPARKLE_EDDSA_PRIVATE_KEY`** 에 넣습니다. (키를 새로 만들려면 `generate_keys` 로 만들고, 출력된 새 `SUPublicEDKey` 를 `tooling/scripts/make_app.sh` 와 `build-pet-dmg.yml` 의 값으로 교체.)
+1. **개인키를 Secret 에 등록** — 공개키와 짝이 되는 개인키는 최초 `generate_keys` 실행 때 만든 사람의 **로그인 키체인**에 있습니다. export 해서(`generate_keys -x private.key`) 저장소 Secret **`SPARKLE_EDDSA_PRIVATE_KEY`** 에 넣습니다. (키를 새로 만들려면 `generate_keys` 로 만들고, 출력된 새 `SUPublicEDKey` 를 `tooling/scripts/make_app.sh` 와 `build-release.yml` 의 값으로 교체.)
 2. **Pages 소스를 "GitHub Actions" 로** — 저장소 **Settings › Pages › Build and deployment › Source** 를 **GitHub Actions** 로 설정합니다. (워크플로의 `publish-appcast` 잡이 `appcast.xml` 을 여기로 배포합니다.)
 
 **릴리스 발행 (버전 낼 때마다)**
