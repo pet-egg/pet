@@ -16,9 +16,25 @@ macOS 앱과 **그대로 공유**한다(소스 오브 트루스가 한 곳).
   - 트랜스크립트 JSONL 토큰(`input+output+cache_creation`, cache_read 제외)으로
     경험치·진화(2억 → 5억 토큰) 계산
 - 펫 위 호버로 헤롱헤롱 확인(acknowledge), 창 위치·선택·경험치는 `QSettings`(Windows 레지스트리)에 저장.
+- **인앱 자동 업데이트**(`pet_win/updater.py`, 맥 Sparkle 대응) — 아래 참고.
 
-> macOS 전용 기능(대전/노려보기·Claude Desktop AX 감지·알림센터 DB·Sparkle 자동 업데이트·
-> Orca 소스)은 아직 포팅하지 않았다. Windows 에서 Orca 세션 제외 로직은 파일이 없어 자연히 no-op.
+> macOS 전용 기능(대전/노려보기·Claude Desktop AX 감지·알림센터 DB·Orca 소스)은 아직
+> 포팅하지 않았다. Windows 에서 Orca 세션 제외 로직은 파일이 없어 자연히 no-op.
+
+## 자동 업데이트 (`updater.py`)
+
+맥이 Sparkle 로 하듯 윈도우도 같은 개념을 직접 구현했다 — **frozen `pet.exe` + Windows 에서만** 활성.
+
+1. 시작 3초 뒤(및 트레이 "업데이트 확인") `releases/latest/download/windows-appcast.json`
+   (`{version, url, edSignature, notes}`)을 읽어 현재 버전(`_version.py`, CI가 태그로 주입)과 비교.
+2. 새 버전이면 `pet.exe` 를 내려받아 **맥 Sparkle 과 같은 EdDSA(Ed25519) 공개키**
+   (`updater.PUBLIC_KEY_B64`)로 서명 검증(PyNaCl). 미서명 배포라 이 서명이 무결성의 유일한 담보.
+3. 검증되면 **팝업 없이 트레이 메뉴로만** "업데이트 설치 (vX)" 를 노출(Sparkle UX). 사용자가 누르면
+   실행 중 exe 를 `pet.old.exe` 로 rename(윈도우는 실행 중 exe 도 rename 가능)한 뒤 새 exe 를
+   제자리에 놓고 재실행한다. 남은 `pet.old.exe` 는 다음 시작 때 삭제.
+
+서명: CI(`build-release.yml`)의 `release` 잡이 맥 appcast 와 **같은 `SPARKLE_EDDSA_PRIVATE_KEY`**
+로 `pet.exe` 를 Ed25519 서명해 `windows-appcast.json` 을 만든다(공개키는 코드에 임베드).
 
 ## 개발 실행
 

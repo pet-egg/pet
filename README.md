@@ -53,7 +53,8 @@ $env:PET_CHANNEL='stable'; irm https://raw.githubusercontent.com/pet-egg/pet/mai
 - **보안 경고 처리**: 미서명 exe 라 브라우저로 받아 더블클릭하면 SmartScreen("Windows에서 PC를 보호했습니다")·"알 수 없는 게시자" 경고가 뜹니다. 위 스크립트는 **브라우저가 아니라 PowerShell 로 받아 MOTW(Mark of the Web)가 안 붙고**, 추가로 `Unblock-File`(맥의 `xattr -d com.apple.quarantine` 대응)로 벗기며, 유저 폴더에 설치해 관리자 권한(UAC)도 필요 없어 **이 경고들이 뜨지 않습니다**. (다만 미서명이라 백신 오탐은 별개 이슈입니다.)
 - 릴리스에서 직접 받으려면 [릴리스](https://github.com/pet-egg/pet/releases) 의 `pet.exe`. 이때는 위 SmartScreen 경고가 뜨니 **추가 정보 → 실행**으로 넘기거나, 받은 뒤 PowerShell 에서 `Unblock-File pet.exe` 하세요.
 - 개발·빌드·테스트 자세한 절차는 [`apps/windows/README.md`](apps/windows/README.md) 참고.
-- macOS 전용 기능(대전·Claude Desktop AX 감지·Sparkle 자동 업데이트·Orca 소스)은 아직 포팅되지 않았습니다. 윈도우 자동 업데이트는 미구현(재설치로 갱신).
+- **자동 업데이트 지원**: 맥이 Sparkle 로 하듯, 윈도우는 **인앱 업데이터**가 새 버전을 조용히 확인해 트레이 메뉴로 알립니다("업데이트 확인" / "업데이트 설치"). 릴리스의 `pet.exe` 는 맥 Sparkle 과 **같은 EdDSA(Ed25519) 키로 서명**되고, 앱이 내려받아 서명을 검증한 뒤 교체·재실행합니다(미서명 배포라 이 서명이 무결성 담보). 자세한 동작은 [`apps/windows/README.md`](apps/windows/README.md) 참고.
+- macOS 전용 기능(대전·Claude Desktop AX 감지·Orca 소스)은 아직 포팅되지 않았습니다.
 
 > 릴리스는 맥·윈도우 공용입니다 — `v*` 태그 하나가 `pet.dmg`(맥)와 `pet.exe`(윈도우)를 함께 빌드해 같은 릴리스에 올립니다.
 
