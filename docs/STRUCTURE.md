@@ -27,8 +27,8 @@ pet/
 ├─ dist/                      생성물(gitignore)
 │  └─ orca/<slug>.codex-pet/  Orca 임포트 번들 — sync_assets 가 assets/pets 에서 생성
 ├─ preview/index.html         브라우저 미리보기
-├─ .github/workflows/         build-pet-dmg.yml(v*) · build-pet-exe.yml(win-v*)
-└─ README.md  CLAUDE.md  install.sh
+├─ .github/workflows/         build-release.yml (v* → 맥 dmg + 윈도우 exe 통합 릴리스)
+└─ README.md  CLAUDE.md  install.sh(맥)  install.ps1(윈도우)
 ```
 
 ## 단일 소스 규칙 (중복 제거)
@@ -55,7 +55,7 @@ python3 tooling/scripts/sync_assets.py           # 정본 → mac 미러 + dist/
 python3 tooling/scripts/sync_assets.py --check    # 미러가 정본과 일치하는지(CI)
 ```
 
-`make_app.sh` 와 CI(build-pet-dmg.yml)는 `swift build` 전에 sync 를 먼저 돌린다.
+`make_app.sh` 와 CI(build-release.yml)는 `swift build` 전에 sync 를 먼저 돌린다.
 `build_sheet.py` 도 정본을 다시 구운 뒤 sync 를 호출한다. **fresh clone 에서 mac 을
 빌드하려면 먼저 sync 를 한 번 돌려야 한다.** windows 는 `assets/pets` 를 직접 읽어
 sync 가 필요 없다.

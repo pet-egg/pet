@@ -51,11 +51,12 @@ pip install pyinstaller Pillow
 pyinstaller pet.spec --noconfirm      # dist/pet.exe
 ```
 
-CI: `win-v*` 태그를 푸시하면 `.github/workflows/build-pet-exe.yml` 가 windows-latest 에서
-헤드리스 테스트 → PyInstaller 빌드 → 실제 exe 5초 스모크 → 릴리스 업로드까지 자동으로 한다.
+CI: `v*` 태그를 푸시하면 `.github/workflows/build-release.yml` 의 `build-windows` 잡이
+windows-latest 에서 헤드리스 테스트 → PyInstaller 빌드 → 실제 exe 5초 스모크를 하고,
+`release` 잡이 **맥 `pet.dmg` 와 함께 같은 릴리스에 `pet.exe`** 를 올린다(맥·윈도우 통합).
 
 ```sh
-git tag win-v0.1.0 && git push origin win-v0.1.0
+git tag v0.2.0 && git push origin v0.2.0   # 맥 dmg + 윈도우 exe 동시 빌드·릴리스
 ```
 
 macOS 빌드(`v*` 태그 → pet.dmg)와 태그 네임스페이스가 분리돼 있어 서로 안 부딪힌다.

@@ -1,20 +1,22 @@
-name: Build Pet DMG
+name: Build & Release (macOS + Windows)
 
-# 메뉴바 펫 앱(apps/macos/)을 `cd apps/macos && swift run` 과 동일하게 **모든 펫을 포함한
-# 단일 앱**으로 빌드해 pet.app / pet.dmg 를 만드는 파이프라인. v* 태그 푸시로만 트리거되며
-# 빌드 후 릴리스 생성 + Pages 배포까지 자동으로 이어진다. 예전에는 펫 하나를 골라 그 펫만
-# 남기게 소스를 패치했지만, 지금은 메뉴바에서 12종을 모두 전환할 수 있는 기본 빌드를 그대로
-# 배포한다. 산출물 이름은 전부 `pet` 로 고정한다.
+# 하나의 `v*` 태그로 **맥(pet.dmg)과 윈도우(pet.exe)를 함께** 빌드해 **한 릴리스**에
+# 올리는 통합 파이프라인. 플랫폼 구분은 태그가 아니라 파일 이름에 둔다(맥=pet.dmg,
+# 윈도우=pet.exe). CLAUDE.md 의 "맥·윈도우 동시개발" 원칙과 짝을 이룬다.
+#   - build-macos   : Swift 앱 → pet.app → pet.dmg + 서명된 appcast(Sparkle)
+#   - build-windows : PySide6 앱 → PyInstaller pet.exe (+ zip)
+#   - release       : 둘을 받아 같은 릴리스에 pet.dmg·pet.exe 업로드(--latest)
+#   - publish-appcast / bump-cask : 맥 자동업데이트(Sparkle)·Homebrew 갱신
 on:
   push:
     tags:
-      - 'v*'            # 예: git push origin v1.0.0 → 빌드 + 릴리스 + Pages 배포 자동
+      - 'v*'            # 예: git push origin v1.0.0 → 맥+윈도우 빌드 + 릴리스 + Pages 배포
 
 permissions:
   contents: read
 
 jobs:
-  build-dmg:
+  build-macos:
     runs-on: macos-latest
     steps:
       - name: Checkout
@@ -198,34 +200,105 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # ── 아래 두 잡은 태그 푸시(refs/tags/v*)일 때만 실행된다. 트리거가 v* 태그뿐이라
+  # 윈도우 앱(apps/windows)을 PyInstaller 로 pet.exe 로 빌드한다. 리소스(assets/pets)는
+  # 커밋돼 있어 sync 가 필요 없다(pet.spec 이 assets/pets 를 그대로 번들). 빌드 전에
+  # headless(offscreen) 테스트로 로직·리소스 로딩·렌더를 검증하고, 만든 exe 를 5초
+  # 스모크한 뒤 아티팩트로 올린다. 릴리스 업로드는 아래 release 잡이 맥 dmg 와 함께 한다.
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install PySide6==6.11.2 Pillow pyinstaller pytest
+
+      - name: Run headless tests
+        env:
+          QT_QPA_PLATFORM: offscreen
+        working-directory: apps/windows
+        run: python -m pytest tests -v
+
+      - name: Build pet.exe
+        working-directory: apps/windows
+        run: pyinstaller pet.spec --noconfirm
+
+      - name: Smoke-test built exe (offscreen, 5s)
+        working-directory: apps/windows
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          # 번들이 리소스를 못 찾으면 즉시 죽으므로, 5초 실행 후 살아있으면 통과.
+          $p = Start-Process -FilePath ".\dist\pet.exe" -PassThru
+          Start-Sleep -Seconds 5
+          if ($p.HasExited) {
+            Write-Error "pet.exe 가 5초 내에 종료됨 (exit=$($p.ExitCode)) — 번들/리소스 문제 의심"
+            exit 1
+          }
+          Stop-Process -Id $p.Id -Force
+          Write-Host "pet.exe 5초 생존 — 스모크 통과"
+
+      - name: Package zip
+        working-directory: apps/windows
+        shell: pwsh
+        run: |
+          Copy-Item dist\pet.exe pet.exe
+          Compress-Archive -Path pet.exe -DestinationPath "pet-windows-x64.zip" -Force
+
+      - name: Upload windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pet-windows
+          path: |
+            apps/windows/dist/pet.exe
+            apps/windows/pet-windows-x64.zip
+
+  # ── 아래 잡들은 태그 푸시(refs/tags/v*)일 때만 실행된다. 트리거가 v* 태그뿐이라
   #    사실상 항상 도는 잡이지만, 안전장치로 ref 조건을 그대로 둔다. ──
 
-  # 릴리스 생성 + pet.dmg 업로드. "latest" 릴리스가 이 태그가 되므로
-  # appcast 의 enclosure(releases/latest/download/pet.dmg)와 URL 이 일치한다.
+  # 릴리스 생성 + 맥·윈도우 산출물을 **한 릴리스**에 업로드. "latest" 릴리스가 이
+  # 태그가 되므로 appcast 의 enclosure(releases/latest/download/pet.dmg)와 URL 이 일치하고,
+  # 윈도우 원라이너(install.ps1)가 받는 releases/latest/download/pet.exe 도 여기서 해결된다.
   release:
-    needs: build-dmg
+    needs: [build-macos, build-windows]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Download pet.dmg
+      - name: Download macOS artifact
         uses: actions/download-artifact@v4
         with:
           name: pet-dmg
           path: dist
-      - name: Create release & upload pet.dmg
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: pet-windows
+          path: dist
+      - name: Create release & upload pet.dmg + pet.exe
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # 이미 있는 태그면 create 가 실패 → 그때는 asset 만 덮어쓴다(--clobber).
-          gh release create "$GITHUB_REF_NAME" dist/pet.dmg \
+          # 맥(pet.dmg)·윈도우(pet.exe/zip)를 같은 릴리스에. 이미 있는 태그면 create 가
+          # 실패 → 그때는 asset 만 덮어쓴다(--clobber).
+          gh release create "$GITHUB_REF_NAME" \
+            dist/pet.dmg dist/pet.exe dist/pet-windows-x64.zip \
             --repo "$GITHUB_REPOSITORY" \
             --title "$GITHUB_REF_NAME" \
-            --notes "Sparkle 자동 업데이트 지원 빌드 ($GITHUB_REF_NAME)" \
+            --notes "맥(pet.dmg)·윈도우(pet.exe) 통합 릴리스 ($GITHUB_REF_NAME). 맥은 Sparkle 자동 업데이트 지원." \
             --latest \
-          || gh release upload "$GITHUB_REF_NAME" dist/pet.dmg --clobber --repo "$GITHUB_REPOSITORY"
+          || gh release upload "$GITHUB_REF_NAME" \
+               dist/pet.dmg dist/pet.exe dist/pet-windows-x64.zip \
+               --clobber --repo "$GITHUB_REPOSITORY"
 
   # Homebrew Cask(pet-egg/homebrew-pet)의 version/sha256 을 이번 릴리스로 갱신한다.
   # 다른 저장소(탭)에 push 해야 하므로 그 레포에 write 권한이 있는 PAT 를 시크릿
@@ -267,7 +340,7 @@ jobs:
   # appcast 는 SPARKLE_EDDSA_PRIVATE_KEY 시크릿이 있어야 생성되므로, 시크릿이 없으면
   # 아티팩트가 없어 이 잡은 실패한다(= 릴리스에는 서명 키가 필수라는 신호).
   publish-appcast:
-    needs: build-dmg
+    needs: build-macos
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
