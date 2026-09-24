@@ -1,10 +1,10 @@
 # connor-pet
 
-Orca 또는 Claude Code의 프로젝트/에이전트 상태에 반응하는 데스크톱 펫 (리아코/Totodile 등 9종, 메뉴바에서 전환). 자세한 배경·아키텍처·동작 방식은 `README.md`가 최신 소스이므로 거기를 먼저 읽을 것.
+Orca / Claude Code / Claude 데스크톱 앱의 상태에 반응하는 데스크톱 펫 (포켓몬 등 17종, 메뉴/트레이에서 전환). **모노레포**다: `apps/macos`(Swift/AppKit)와 `apps/windows`(Python/PySide6)가 `assets/`(스프라이트 정본)와 `shared/BEHAVIOR.md`(동작 계약)를 공유한다. 폴더 구조·단일 소스 규칙은 `docs/STRUCTURE.md`, 배경·아키텍처는 `README.md` 가 최신 소스이니 먼저 읽을 것.
 
 ## 구조
 
-- `ConnorPet/` — 실제 결과물인 독립 macOS 앱 (Swift Package, Xcode 불필요)
+- `apps/macos/` — 실제 결과물인 독립 macOS 앱 (Swift Package, Xcode 불필요)
   - `Sources/ConnorPet/OrcaStatusWatcher.swift` — `last-status.json` 폴링(1s) + 상태 집계 (Orca 소스)
   - `Sources/ConnorPet/ClaudeCodeStatusWatcher.swift` — `~/.claude/sessions/*.json`(권위 소스, 항상) + `~/.claude/pet-status.json`(훅 오버레이, 설치 시)을 250ms마다 폴링해 병합 (Claude Code 소스, 기본값). 세션파일 `status`(busy→달리기 / waiting+waitingFor→얼음 / idle→잠듦)가 달리기·얼음·잠듦을 정한다. **헤롱헤롱(done)·실패(failed)는 훅 없이 워처가 직접 만든다** — `busy→idle` 전이(Stop 엣지)를 폴링으로 감지해 done을 찍고, 그 순간 트랜스크립트 꼬리의 마지막 `tool_result`가 에러면(`lastToolErrored`, 훅의 `last_tool_errored` 포팅) failed로 올린다. 훅 파일은 이제 완전 선택 사항 — 설치돼 있으면 idle 세션에서 워처 감지분 대신 훅 값을 덮어써 앱이 꺼져 있던 동안 끝난 턴도 재시작 후 보이게 할 뿐. 살아있는 세션에 매칭 안 되는 훅 항목은 버림 — 낡은 blocked가 진행 중 세션을 얼리던 버그 방지. **Orca가 띄운 세션은 제외**한다: Orca 세션도 같은 `claude` 프로세스라 세션파일을 쓰므로, Orca의 `last-status.json`에서 `providerSession.id`(=sessionId)를 읽어 그 세션은 건너뛴다(Orca 소스가 담당 → 이중집계 방지). Orca가 훅마다 파일을 재작성해 활성 세션 id가 깜빡이므로, 세션당 고유한 sessionId를 "한 번이라도 Orca가 보고하면 누적"해 제외(세션파일 사라지면 정리). Orca 미설치면 무제외
   - `Sources/ConnorPet/ClaudeDesktopStatusWatcher.swift` — Claude 데스크톱 앱 소스. **접근성(AX) 트리(신호1)+알림센터 DB(신호2)**를 500ms 폴링해 잠듦/달리기/얼음/헤롱헤롱 판정. 데스크톱 앱은 상태를 디스크에 안 남기고 디버그·네트워크 우회 스위치가 붙으면 실행을 거부(CDP/프록시 차단)해서, 세션별 상태를 읽을 유일한 외부 통로가 AX였다. `ClaudeAXProbe`가 Claude 프로세스 요소에 `AXManualAccessibility=true`를 세팅해 Chromium 웹 AX 트리를 강제로 켜고(안 켜면 네이티브 메뉴만 보임 — 예전 "AX 불가" 판단의 원인), 스트리밍 중에만 존재하는 **"응답 중단"(Stop response) 버튼**의 유무로 "생성 중"을, 그 하강엣지로 "턴 종료=헤롱헤롱"을 잡는다. **도구/권한 승인 대기(얼음)**도 같은 트리 순회에서 잡는다 — 승인 카드는 **허용(`허용`/`Allow`)+거부(`거부`/`Deny`) 버튼이 동시에 존재**하는 것으로 판정(`approvalAllowLabels`/`approvalDenyLabels`, 둘 다 있어야 오탐 방지). 승인 중에도 "응답 중단"이 남아 gen·appr이 동시 참이라 매핑에서 **awaitingApproval을 generating보다 우선**해 얼음이 이긴다. `ClaudeAXProbe.sample()`이 한 번 순회로 `Sample(generating, awaitingApproval)`를 돌려준다. 버튼 레이블은 원격 웹앱이 계정 언어로 렌더 → 로케일 의존이라 한/영 문자열 매칭(`stopResponseLabels`). 손쉬운 사용(Accessibility) 권한 필요(없으면 시스템 요청을 한 번 띄우고 생성 감지만 빠진 채 계속 동작). **업데이트 후 손쉬운 사용이 켜진 채로 안 먹는 버그**는 `reconcileAccessibilityGrant()`가 워처 시작 시 고친다 — ad-hoc 서명이라 빌드마다 cdhash가 바뀌고 TCC 권한은 cdhash에 묶여 있어, 업데이트되면 토글은 ON인데 `AXIsProcessTrusted()`가 false가 되고 재요청도 안 뜬다. 그래서 **CFBundleVersion이 바뀌었는데 미인증**이면 `tccutil reset Accessibility <bundleID>`로 낡은 기록을 지워 시스템 요청이 다시 뜨게 한다(정상 권한은 안 건드림). `claudeDesktopAnimation`(running/generating/awaitingApproval/donePending → 애니메이션)은 순수 함수. **얼음은 승인 대기(awaitingApproval)일 때만** — 백그라운드(다른 앱이 앞) 여부는 더 이상 얼음을 만들지 않는다(그냥 잠듦). Claude Code/Orca에서 얼음이 "사용자를 기다림"인 것과 일치
@@ -23,15 +23,19 @@ Orca 또는 Claude Code의 프로젝트/에이전트 상태에 반응하는 데�
   - `Sources/ConnorPet/BattleSelfTest.swift` — `CONNORPET_SELFTEST=battle swift run`으로 도는 헤드리스 핸드셰이크 검증(한 프로세스에서 A/B 발견→신청→수락→결과 합의까지 확인, `SELFTEST PASS`)
   - `Sources/ConnorPet/FirstRunWizard.swift` — 설치 후 최초 1회만 뜨는 2단계 모달(재실행 X, `didCompleteFirstRun` UserDefaults 플래그로 게이트). ①펫 고르기(썸네일=idle 첫 프레임 이미지 그리드) → ②사용하는 앱 고르기(상태 소스: Claude Desktop/Claude Code/Orca — 이 순서는 메뉴바/설정 picker와 동일하게 `availableStatusSources`를 그대로 따름). BattleDialog와 같은 borderless 다크 카드(accessory 앱이라 NSAlert이 폴더 아이콘을 띄우는 문제 회피). 고른 값을 `selectedPetSlug`/`selectedStatusSource`에 반영·저장. 창을 만들기 *전에* `maybeRunFirstRunWizard()`로 불려서 고른 펫으로 창이 뜬다. 셀프테스트/`CONNORPET_DEBUG_SETTINGS`/`CONNORPET_PET` 실행에선 모달을 건너뜀. 2단계 각 항목 왼쪽엔 앱 아이콘(흰 타일 위 글리프)을 붙인다 — `Resources/source-icons/<id>.png`(Claude Desktop=Claude 선버스트[Simple Icons, CC0], Claude Code="Clawd" 픽셀 재현, Orca=범고래[Twemoji, CC-BY 4.0])를 `WizardButton.composeTile`로 타일에 합성하고, 이름은 자식 라벨뷰라 `WizardButton.hitTest`가 클릭을 버튼으로 라우팅(+`setAccessibilityLabel`)
   - `Sources/ConnorPet/AppDelegate.swift` — 앱 연결, 첫 실행 마법사(위)·메뉴바 아이콘/펫 선택/소스 선택/경험치 바 토글/진화 사용 토글/**방해금지 모드 토글**/**Claude Code 상태 훅 설치 토글**/**전체 디스크 접근 권한 열기**/대전 메뉴 + 경험치%에 따른 진화 스프라이트 교체(`evolutionChains`, 임계치·on-off는 사용자 설정). 이 메뉴 기능들은 모두 `SettingsWindow`에서도 접근되며, `SettingsActionsDelegate` 준수로 같은 핵심 메서드(`changePet`/`changeStatusSource`/`setEvolutionEnabled` 등)를 공유한다
-  - `Sources/ConnorPet/ClaudeHookInstaller.swift` — `scripts/install_claude_hooks.py`를 Swift로 포팅한 인앱 설치기. DMG로 설치해 저장소가 없는 사용자를 위해, 번들에 넣어 둔 훅 핸들러(`Resources/hooks/pet_hook_status.py`)를 `~/.claude/pet/`로 복사한 뒤 `~/.claude/settings.json`에 같은 2개 훅(Stop→done, SessionEnd→remove)을 병합/제거(`JSONSerialization`으로 느슨하게 읽어 기존 설정·다른 훅은 보존, 쓰기 전 타임스탬프 백업). 설치 시 옛 훅(new `pet_hook_status.py`/legacy `claude_hook_status.py` 둘 다 인식)을 먼저 걷어내고 다시 넣어 재실행·마이그레이션에 안전. AppDelegate 메뉴의 "Claude Code 상태 훅 (헤롱헤롱/실패)" 항목이 이걸 호출(설치 여부=체크 표시)
+  - `Sources/ConnorPet/ClaudeHookInstaller.swift` — `tooling/scripts/install_claude_hooks.py`를 Swift로 포팅한 인앱 설치기. DMG로 설치해 저장소가 없는 사용자를 위해, 번들에 넣어 둔 훅 핸들러(`Resources/hooks/pet_hook_status.py`)를 `~/.claude/pet/`로 복사한 뒤 `~/.claude/settings.json`에 같은 2개 훅(Stop→done, SessionEnd→remove)을 병합/제거(`JSONSerialization`으로 느슨하게 읽어 기존 설정·다른 훅은 보존, 쓰기 전 타임스탬프 백업). 설치 시 옛 훅(new `pet_hook_status.py`/legacy `claude_hook_status.py` 둘 다 인식)을 먼저 걷어내고 다시 넣어 재실행·마이그레이션에 안전. AppDelegate 메뉴의 "Claude Code 상태 훅 (헤롱헤롱/실패)" 항목이 이걸 호출(설치 여부=체크 표시)
   - `Sources/ConnorPet/HookInstallSelfTest.swift` — `CONNORPET_SELFTEST=hooks swift run`으로 도는 헤드리스 설치기 검증(임시 홈에 실제 `settings.json`을 시드해 설치→재설치 무동작→제거까지, 남의 훅이 보존되는지 확인, `SELFTEST PASS`)
-  - `Sources/ConnorPet/Resources/pets/<slug>/` — 펫별 `spritesheet.png` + `pet.json` 번들 사본
-- `<slug>.codex-pet/` (totodile/ditto/charmander/squirtle/geodude/eevee/chikorita/torchic/togepi) — Orca에 직접 임포트 가능한 번들
-- `scripts/build_sheet.py` — PokeAPI에서 스프라이트를 다시 받아 각 펫의 시트를 재생성 (`PETS` 리스트가 소스 오브 트루스)
-- `scripts/make_app.sh` — release 빌드를 독립 실행형 `ConnorPet.app`으로 감싸서 `~/Applications`에 설치 (터미널과 무관하게 상주시키는 정식 실행 경로)
-- `scripts/simulate_agent.py` — 실제 에이전트 없이 `last-status.json`에 가짜 상태 주입 (Orca 소스 전용)
-- `scripts/install_claude_hooks.py` — 위 훅 핸들러를 `~/.claude/settings.json`에 병합/제거(`--uninstall`)하는 설치 스크립트. 기존 훅(matcher 걸린 것 포함) 안 건드리고, 재실행해도 중복 안 됨
-- `scripts/pet_hook_status.py` — Claude Code 훅 핸들러 (선택 설치, README "Claude Code 훅으로 헤롱헤롱/실패까지 보기" 참고). Stop/SessionEnd에서만 돌며 `~/.claude/pet-status.json`에 done/failed/remove만 기록(달리기·얼음은 세션파일이 담당). `~/.claude/settings.json`은 전역 설정이라 **사용자 명시적 동의 없이 이 저장소가 대신 실행하지 않는다** — 스크립트/README/메뉴바 버튼으로 안내만 하고, 사용자가 직접 돌리거나(스크립트) 메뉴에서 명시적으로 눌러야(인앱) 실행. 이 파일의 사본이 `ConnorPet/Sources/ConnorPet/Resources/hooks/pet_hook_status.py`에도 있다(아래 동기화 규칙 참고)
+  - `Sources/ConnorPet/Resources/pets|effects|hooks/` — **생성물(git 추적 안 함)**. 정본은 `assets/`·`tooling/hooks/` 이고, `sync_assets.py` 가 빌드 전에 실파일로 채운다. `source-icons/` 만 committed(mac 전용)
+- `apps/windows/` — 윈도우용 앱 (Python/PySide6). `pet_win/` 에 상태워처·XP·애니메이션·스프라이트 로딩을 포팅. 리소스는 `assets/pets` 를 직접 읽는다. `pet.spec`(PyInstaller)로 `pet.exe` 빌드. 자세한 건 `apps/windows/README.md`
+- `assets/` — **에셋 정본(단일 소스)**: `pets/<slug>/{spritesheet.png,pet.json}`(36종), `effects/`(fire/water/zzz), `app-icon.png`. mac·windows·Orca 번들이 전부 여기서 나온다
+- `shared/` — 두 구현의 계약: `BEHAVIOR.md`(상태머신·decay·XP 임계치·진화 사슬), `pet-manifest.schema.json`(pet.json 스키마)
+- `dist/orca/<slug>.codex-pet/` — Orca 임포트 번들. **생성물(gitignore)** — `sync_assets.py` 가 `assets/pets` 에서 만든다(`make orca`)
+- `tooling/scripts/build_sheet.py` — PokeAPI에서 스프라이트를 다시 받아 **정본 `assets/pets`** 를 재생성 (`PETS` 리스트가 소스 오브 트루스). 끝에 `sync_assets.py` 를 호출해 mac 미러·Orca 번들 갱신
+- `tooling/scripts/sync_assets.py` — 정본(assets/·tooling/hooks/) → mac 타깃 미러(pets·effects·hooks) 복사 + `dist/orca` 생성. `--check` 로 드리프트 검사(CI). **SwiftPM 은 심링크를 번들에 깨진 링크로 복사하므로 반드시 실파일 복사**
+- `tooling/scripts/make_app.sh` — release 빌드를 독립 실행형 `ConnorPet.app`으로 감싸서 `~/Applications`에 설치 (터미널과 무관하게 상주시키는 정식 실행 경로)
+- `tooling/scripts/simulate_agent.py` — 실제 에이전트 없이 `last-status.json`에 가짜 상태 주입 (Orca 소스 전용)
+- `tooling/scripts/install_claude_hooks.py` — 위 훅 핸들러를 `~/.claude/settings.json`에 병합/제거(`--uninstall`)하는 설치 스크립트. 기존 훅(matcher 걸린 것 포함) 안 건드리고, 재실행해도 중복 안 됨
+- `tooling/hooks/pet_hook_status.py` — Claude Code 훅 핸들러 (선택 설치, README "Claude Code 훅으로 헤롱헤롱/실패까지 보기" 참고). Stop/SessionEnd에서만 돌며 `~/.claude/pet-status.json`에 done/failed/remove만 기록(달리기·얼음은 세션파일이 담당). `~/.claude/settings.json`은 전역 설정이라 **사용자 명시적 동의 없이 이 저장소가 대신 실행하지 않는다** — 스크립트/README/메뉴바 버튼으로 안내만 하고, 사용자가 직접 돌리거나(스크립트) 메뉴에서 명시적으로 눌러야(인앱) 실행. **이 파일이 훅 핸들러의 유일한 정본**이다 — 앱 번들에 들어가는 사본(`apps/macos/Sources/ConnorPet/Resources/hooks/`)은 `sync_assets.py` 가 생성하므로 예전처럼 두 벌을 손으로 맞출 필요가 없다(아래 규칙 참고)
 - `install.sh` — 최종 사용자용 원라이너 설치기(`curl … | bash`). 최신 릴리스 `pet.dmg` 를 받아 마운트 → `/Applications` 로 복사 → `com.apple.quarantine` 제거(미서명 배포라 필수) → 실행. 이미 있으면 실행 중인 `pet` 을 종료 후 교체(업데이트 겸용). README 맨 위 "설치"가 이걸 안내
 - `pet-egg/homebrew-pet`(별도 레포) — Homebrew 탭. `brew install --cask pet-egg/pet/pet`. `Casks/pet.rb` 의 `version`/`sha256` 은 릴리스 워크플로의 `bump-cask` 잡이 태그마다 `sed` 로 자동 갱신(그 잡은 탭에 write 하는 PAT `HOMEBREW_TAP_TOKEN` 시크릿이 있을 때만 동작, 없으면 조용히 건너뜀). Cask 는 설치 시 quarantine 을 자동 제거
 - `preview/index.html` — 브라우저 전용 미리보기 (Orca 설치 불필요)
@@ -40,23 +44,28 @@ Orca 또는 Claude Code의 프로젝트/에이전트 상태에 반응하는 데�
 ## 빌드 / 실행 / 테스트
 
 ```sh
-cd ConnorPet
+# ★ 먼저 정본 → mac 미러 sync (Resources/{pets,effects,hooks} 는 git 에 없다).
+#    fresh clone 이나 assets 변경 후 한 번만 돌리면 된다.
+python3 tooling/scripts/sync_assets.py
+cd apps/macos
 swift build          # 컴파일만 확인
 swift run            # 개발 중 실행 (터미널의 자식 프로세스 — 터미널 닫으면 죽는다)
 CONNORPET_DEBUG=1 swift run   # 상태 판정 로그를 stderr로 출력
 ```
 
+윈도우 앱은 `apps/windows/`(Python) — `QT_QPA_PLATFORM=offscreen python -m pytest tests` 로 헤드리스 검증, `pyinstaller pet.spec` 로 exe 빌드. 자세한 건 `apps/windows/README.md`.
+
 사용자가 실제로 쓰는 상주 실행은 `.app` 번들 쪽이다 (저장소 루트에서):
 ```sh
-./scripts/make_app.sh                  # ~/Applications/ConnorPet.app 생성·교체
+./tooling/scripts/make_app.sh                  # ~/Applications/ConnorPet.app 생성·교체
 open -a ~/Applications/ConnorPet.app
 ```
 리소스를 `Bundle.module`로 읽으므로 번들에는 바이너리와 함께 SwiftPM이 만든 `ConnorPet_ConnorPet.bundle`이 `Contents/Resources/`에 들어가야 한다. 바이너리만 복사하면 스프라이트를 못 찾아 실행 즉시 `fatalError`로 죽는다.
 
 에이전트 상태 없이 테스트:
 ```sh
-python3 scripts/simulate_agent.py set web-app working
-python3 scripts/simulate_agent.py clear-all
+python3 tooling/scripts/simulate_agent.py set web-app working
+python3 tooling/scripts/simulate_agent.py clear-all
 ```
 
 UI/동작을 변경했으면 반드시 `swift run`으로 실제 앱을 띄워서 확인할 것 (빌드 성공 ≠ 동작 확인).
@@ -69,10 +78,10 @@ UI/동작을 변경했으면 반드시 `swift run`으로 실제 앱을 띄워서
   gh repo edit --description "<새 설명>"
   ```
   README와 실제 동작이 어긋나는 부분(예: 코드에서 바뀐 아이콘·플래그·경로가 README에 옛날 그대로 남아있는 경우)을 발견하면 관련 작업이 아니어도 그 자리에서 같이 고칠 것.
-- **훅 핸들러 두 벌 항상 일치**: `scripts/pet_hook_status.py`(저장소/스크립트 설치용)와 `ConnorPet/Sources/ConnorPet/Resources/hooks/pet_hook_status.py`(앱 번들에 넣어 메뉴바 버튼이 `~/.claude/pet/`로 복사하는 사본)는 **바이트 단위로 동일**해야 한다. 한쪽을 고치면 반드시 다른 쪽에 복사할 것(`cp scripts/pet_hook_status.py ConnorPet/Sources/ConnorPet/Resources/hooks/pet_hook_status.py`). 어긋나면 스크립트로 설치한 사용자와 앱으로 설치한 사용자의 동작이 달라진다. 변경했다면 `CONNORPET_SELFTEST=hooks swift run`으로 설치기 회귀도 함께 확인.
-- **새 포켓몬(펫) 추가**: `AppDelegate.swift`의 `availablePetSlugs`에 슬러그를 추가하고 `scripts/build_sheet.py`의 `PETS`도 함께 갱신할 것. (CI(`build-pet-dmg.yml`)는 이제 펫을 고르지 않고 전체 빌드를 그대로 배포하므로, 예전처럼 워크플로의 펫 드롭다운 목록을 맞춰 줄 필요는 없다 — 그 입력은 삭제됨.)
-- **번들 리소스는 반드시 `AppDelegate.resourceBundle`로 읽을 것 (`Bundle.module` 직접 사용 금지)**: 스프라이트·이펙트·소스 아이콘 등 `Bundle.module`(SwiftPM 생성)로 접근하던 리소스는 전부 `AppDelegate.resourceBundle.url(forResource:...)`로 읽는다. `Bundle.module`은 **`.app` 루트(`Bundle.main.bundleURL`)와 빌드 시점 하드코딩 경로(`/Users/runner/...`) 딱 두 곳만** 찾는데, 코드서명된 배포 `.app`은 번들을 `Contents/Resources/`에 넣어야 해서(루트에 두면 codesign이 거부 → quarantine 시 "손상됨") **둘 다 못 찾아 첫 참조 순간 `fatalError`로 죽는다**. `resourceBundle`은 `Bundle.main.resourceURL`(= 배포본의 `Contents/Resources`, `swift run`의 `.build/<config>`)을 봐서 dev·release 둘 다 커버한다. **주의: 이 버그는 로컬 빌드로는 재현 안 된다** — 개발 머신엔 `Bundle.module`의 하드코딩 빌드 경로가 실제로 존재해 우연히 넘어가고, **CI가 만든 실제 DMG에서만 크래시**한다(검증하려면 배포 DMG를 받거나 `.build/<config>/ConnorPet_ConnorPet.bundle`을 잠시 치워 두고 첫 실행할 것). 리소스가 아닌 **Info.plist 조회**(`SUFeedURL`·앱 버전 등)는 그대로 `Bundle.main`이 맞다 — 리소스 서브번들엔 그 키가 없다. 새 리소스 로딩 코드를 추가할 때 `Bundle.module`을 쓰지 말 것(`grep -rn 'Bundle.module' ConnorPet/Sources`로 점검).
-- **번들은 반드시 `.app` 내부의 `Contents/Resources/`에 생성·포함할 것**: 위 읽기 규칙(`resourceBundle`)과 짝을 이루는 패키징 규칙이다. `.app`을 조립하는 두 경로 — `scripts/make_app.sh`와 CI(`.github/workflows/build-pet-dmg.yml`)의 "Assemble pet.app" 스텝 — 은 SwiftPM이 만든 `ConnorPet_ConnorPet.bundle`을 **`<앱>.app/Contents/Resources/ConnorPet_ConnorPet.bundle`로 복사**해야 한다(`cp -R "$BIN/ConnorPet_ConnorPet.bundle" "$APP/Contents/Resources/"`). **`.app` 루트(`<앱>.app/` 바로 밑)에 두면 안 된다** — codesign이 "unsealed contents present in the bundle root"로 서명을 거부하고, quarantine 붙은 배포본이 "손상되어 열 수 없음"으로 죽는다. `resourceBundle`이 보는 `Bundle.main.resourceURL`이 바로 이 `Contents/Resources/`이므로, 번들을 여기에 넣어야만 서명·실행이 모두 성립한다. 앱 구조를 바꾸거나 새 리소스 디렉터리를 추가할 때 이 복사 스텝을 두 파일(make_app.sh·CI) 모두에 반영할 것.
+- **에셋·훅은 정본만 편집 (단일 소스 + sync)**: 펫 스프라이트/`pet.json` 은 `assets/pets/`, 이펙트는 `assets/effects/`, Claude Code 훅은 `tooling/hooks/pet_hook_status.py` 가 **유일한 정본**이다. mac 타깃의 `apps/macos/Sources/ConnorPet/Resources/{pets,effects,hooks}` 와 `dist/orca/*` 는 **git 추적 안 하는 생성물**로, `python3 tooling/scripts/sync_assets.py` 가 정본에서 실파일로 채운다(SwiftPM 은 심링크를 번들에 깨진 링크로 복사해 크래시하므로 실파일 복사여야 함 — 검증됨). 정본을 고쳤으면 sync 를 돌리고(또는 `make_app.sh`/CI 가 자동으로 돌림), `python3 tooling/scripts/sync_assets.py --check` 로 드리프트가 없는지 확인. **사본을 손으로 편집하지 말 것** — 다음 sync 에 덮어써진다. 훅을 바꿨으면 `CONNORPET_SELFTEST=hooks swift run` 회귀도 확인.
+- **새 포켓몬(펫) 추가**: 세 곳을 함께 갱신 — ① `apps/macos/Sources/ConnorPet/AppDelegate.swift` 의 `availablePetSlugs`, ② `apps/windows/pet_win/petmeta.py` 의 `AVAILABLE_PET_SLUGS`(+진화면 `EVOLUTION_CHAINS`), ③ `tooling/scripts/build_sheet.py` 의 `PETS`. Orca 번들을 만들 기본형이면 `tooling/scripts/sync_assets.py` 의 `ORCA_SLUGS` 에도 추가. `build_sheet.py` 를 돌리면 정본 `assets/pets` 가 생성되고 sync 까지 자동 실행된다. (CI 는 전체 빌드를 그대로 배포하므로 워크플로 펫 목록은 손댈 필요 없다.)
+- **번들 리소스는 반드시 `AppDelegate.resourceBundle`로 읽을 것 (`Bundle.module` 직접 사용 금지)**: 스프라이트·이펙트·소스 아이콘 등 `Bundle.module`(SwiftPM 생성)로 접근하던 리소스는 전부 `AppDelegate.resourceBundle.url(forResource:...)`로 읽는다. `Bundle.module`은 **`.app` 루트(`Bundle.main.bundleURL`)와 빌드 시점 하드코딩 경로(`/Users/runner/...`) 딱 두 곳만** 찾는데, 코드서명된 배포 `.app`은 번들을 `Contents/Resources/`에 넣어야 해서(루트에 두면 codesign이 거부 → quarantine 시 "손상됨") **둘 다 못 찾아 첫 참조 순간 `fatalError`로 죽는다**. `resourceBundle`은 `Bundle.main.resourceURL`(= 배포본의 `Contents/Resources`, `swift run`의 `.build/<config>`)을 봐서 dev·release 둘 다 커버한다. **주의: 이 버그는 로컬 빌드로는 재현 안 된다** — 개발 머신엔 `Bundle.module`의 하드코딩 빌드 경로가 실제로 존재해 우연히 넘어가고, **CI가 만든 실제 DMG에서만 크래시**한다(검증하려면 배포 DMG를 받거나 `.build/<config>/ConnorPet_ConnorPet.bundle`을 잠시 치워 두고 첫 실행할 것). 리소스가 아닌 **Info.plist 조회**(`SUFeedURL`·앱 버전 등)는 그대로 `Bundle.main`이 맞다 — 리소스 서브번들엔 그 키가 없다. 새 리소스 로딩 코드를 추가할 때 `Bundle.module`을 쓰지 말 것(`grep -rn 'Bundle.module' apps/macos/Sources`로 점검).
+- **번들은 반드시 `.app` 내부의 `Contents/Resources/`에 생성·포함할 것**: 위 읽기 규칙(`resourceBundle`)과 짝을 이루는 패키징 규칙이다. `.app`을 조립하는 두 경로 — `tooling/scripts/make_app.sh`와 CI(`.github/workflows/build-pet-dmg.yml`)의 "Assemble pet.app" 스텝 — 은 SwiftPM이 만든 `ConnorPet_ConnorPet.bundle`을 **`<앱>.app/Contents/Resources/ConnorPet_ConnorPet.bundle`로 복사**해야 한다(`cp -R "$BIN/ConnorPet_ConnorPet.bundle" "$APP/Contents/Resources/"`). **`.app` 루트(`<앱>.app/` 바로 밑)에 두면 안 된다** — codesign이 "unsealed contents present in the bundle root"로 서명을 거부하고, quarantine 붙은 배포본이 "손상되어 열 수 없음"으로 죽는다. `resourceBundle`이 보는 `Bundle.main.resourceURL`이 바로 이 `Contents/Resources/`이므로, 번들을 여기에 넣어야만 서명·실행이 모두 성립한다. 앱 구조를 바꾸거나 새 리소스 디렉터리를 추가할 때 이 복사 스텝을 두 파일(make_app.sh·CI) 모두에 반영할 것.
 - **브랜치 전략: GitHub Flow**: `main`은 항상 배포 가능한 상태로 유지하고, 모든 작업은 `main`에서 분기한 **기능 브랜치**에서 한다. 브랜치 이름은 `feature/<영문브랜치명>`(kebab-case, 영문) 형식으로 짓는다 (예: `feature/lan-multiplayer-battle`). 작업이 끝나면 그 기능 브랜치를 push하고 `main`으로 향하는 PR을 열어 리뷰 후 병합한다. `main`에 직접 push하지 않는다.
 - **버전은 SemVer(`vX.Y.Z`) — 기능=MINOR, 버그수정/작은 변경=PATCH**: 릴리스는 `v*` 태그가 단일 소스이고(태그 푸시로만 CI가 빌드·배포한다) 다음 규칙으로 다음 태그를 정한다:
   - **기능 추가**(새 펫·새 상태 소스·새 메뉴/설정·대전 기능 등 사용자에게 새로 생기는 것) → **MINOR** 를 올리고 PATCH 는 0 으로 (`v0.3.4` → `v0.4.0`)

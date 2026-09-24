@@ -39,7 +39,7 @@ brew install --cask pet-egg/pet/pet
 
 - 서명이 없어 SmartScreen 이 "알 수 없는 게시자" 경고를 띄울 수 있습니다 — **추가 정보 → 실행**으로 넘어가세요.
 - 빌드는 `win-v*` 태그 푸시로 GitHub Actions 가 자동으로 합니다(예: `git push origin win-v0.1.0`).
-- 개발·빌드·테스트 자세한 절차는 [`windows/README.md`](windows/README.md) 참고.
+- 개발·빌드·테스트 자세한 절차는 [`apps/windows/README.md`](apps/windows/README.md) 참고.
 - macOS 전용 기능(대전·Claude Desktop AX 감지·Sparkle 자동 업데이트·Orca 소스)은 아직 포팅되지 않았습니다.
 
 ---
@@ -78,8 +78,8 @@ Claude Code CLI는 실행 중인 프로세스마다 `~/.claude/sessions/<pid>.js
 **스크립트로 설치** — 저장소를 클론해 쓰는 경우. 필요한 2개 훅을 `~/.claude/settings.json`에 병합해줍니다. 이미 있는 다른 훅(matcher가 걸린 것 포함)은 절대 건드리지 않고, 이 저장소가 어디 클론됐든 경로도 알아서 맞춰줍니다. 실행 전 기존 파일을 타임스탬프 붙여 백업하고, 몇 번을 다시 실행해도 (예전 6개 훅이 있었다면 2개로 정리하며) 항상 같은 상태로 수렴합니다:
 
 ```sh
-python3 scripts/install_claude_hooks.py             # 설치 (또는 예전 훅 마이그레이션)
-python3 scripts/install_claude_hooks.py --uninstall  # connor-pet이 추가한 항목만 제거
+python3 tooling/scripts/install_claude_hooks.py             # 설치 (또는 예전 훅 마이그레이션)
+python3 tooling/scripts/install_claude_hooks.py --uninstall  # connor-pet이 추가한 항목만 제거
 ```
 
 **수동 설치**를 원하면 `~/.claude/settings.json`에 아래 내용을 직접 추가해도 됩니다 (이미 다른 `hooks`가 있다면 이벤트별로 병합, 경로는 이 저장소를 클론한 실제 위치로):
@@ -88,10 +88,10 @@ python3 scripts/install_claude_hooks.py --uninstall  # connor-pet이 추가한 �
 {
   "hooks": {
     "Stop": [
-      { "hooks": [{ "type": "command", "command": "python3 /path/to/pet/scripts/pet_hook_status.py done" }] }
+      { "hooks": [{ "type": "command", "command": "python3 /path/to/pet/tooling/hooks/pet_hook_status.py done" }] }
     ],
     "SessionEnd": [
-      { "hooks": [{ "type": "command", "command": "python3 /path/to/pet/scripts/pet_hook_status.py remove" }] }
+      { "hooks": [{ "type": "command", "command": "python3 /path/to/pet/tooling/hooks/pet_hook_status.py remove" }] }
     ]
   }
 }
@@ -127,7 +127,7 @@ python3 scripts/install_claude_hooks.py --uninstall  # connor-pet이 추가한 �
 Orca 소스에도 똑같이 적용됩니다. `달리기(working)`·`얼음(blocked)`은 세션 파일이 매 순간
 현재값으로 갱신하므로(레벨 트리거) 감쇠 규칙이 따로 필요 없습니다.
 
-`scripts/pet_hook_status.py`(선택 설치 시)는 각 훅이 stdin으로 받는 JSON(`session_id`/`cwd`/`transcript_path` 포함)을 읽어서 `~/.claude/pet-status.json`을 Orca의 `last-status.json`과 같은 형태로 갱신합니다(동시에 여러 세션이 훅을 발생시켜도 안전하도록 `fcntl.flock`으로 잠그고 원자적으로 씀). `ClaudeCodeStatusWatcher`에서 **권위 소스는 세션 파일**입니다: 달리기/얼음/잠듦은 세션 파일이 정하고, 헤롱헤롱/실패는 워처가 `busy → idle` 엣지에서 직접 만들며, 훅 파일이 있으면 그 세션이 `idle`일 때만 워처가 감지한 것 대신 훅 값으로 덧씌웁니다(살아있는 세션에 대응하는 항목이 없는 훅 항목은 버립니다). 오버레이는 절대 `working`/`blocked`를 강제할 수 없어서, 낡은 훅 항목이 진행 중인 세션을 얼려버리던 예전 버그가 사라졌습니다 — **훅을 설정 안 해도 다섯 상태가 모두 나오고**, 설정하면 앱이 꺼져 있던 동안 끝난 턴의 헤롱헤롱/실패까지 재시작 후에 보이는 것만 더해집니다.
+`tooling/hooks/pet_hook_status.py`(선택 설치 시)는 각 훅이 stdin으로 받는 JSON(`session_id`/`cwd`/`transcript_path` 포함)을 읽어서 `~/.claude/pet-status.json`을 Orca의 `last-status.json`과 같은 형태로 갱신합니다(동시에 여러 세션이 훅을 발생시켜도 안전하도록 `fcntl.flock`으로 잠그고 원자적으로 씀). `ClaudeCodeStatusWatcher`에서 **권위 소스는 세션 파일**입니다: 달리기/얼음/잠듦은 세션 파일이 정하고, 헤롱헤롱/실패는 워처가 `busy → idle` 엣지에서 직접 만들며, 훅 파일이 있으면 그 세션이 `idle`일 때만 워처가 감지한 것 대신 훅 값으로 덧씌웁니다(살아있는 세션에 대응하는 항목이 없는 훅 항목은 버립니다). 오버레이는 절대 `working`/`blocked`를 강제할 수 없어서, 낡은 훅 항목이 진행 중인 세션을 얼려버리던 예전 버그가 사라졌습니다 — **훅을 설정 안 해도 다섯 상태가 모두 나오고**, 설정하면 앱이 꺼져 있던 동안 끝난 턴의 헤롱헤롱/실패까지 재시작 후에 보이는 것만 더해집니다.
 
 **헤롱헤롱이 사라지는 시점**: `done`은 그 세션이 다시 `working`으로 바뀌기 전까지, 또는 **펫에 마우스를 올리기 전까지** 유지됩니다(둘 중 먼저 오는 쪽). 펫을 호버하면 `AgentStatusWatching.acknowledgeDone()`이 호출되어 그 시점 이전의 `done`은 전부 "확인함" 처리되고, 그 이후에 새로 `done`이 찍히면 다시 나타납니다 — Stop 이벤트 하나가 무한히 헤롱헤롱을 유지하지 않도록 하는 장치입니다.
 
@@ -315,7 +315,7 @@ Orca의 훅 서버는 열려있는 모든 에이전트 패널의 상태를 250ms
 - **review → 헤롱헤롱**: 골드 톤 대신 핑크 톤 + 떠오르는 하트 이펙트로, "일 끝났다"는 긍정적인
   뉘앙스를 상태이상 컨셉 안에서 표현했습니다.
 
-전부 `scripts/build_sheet.py`의 `tint()`/`desaturate()`에 더해 `draw_ice_crystal()`/
+전부 `tooling/scripts/build_sheet.py`의 `tint()`/`desaturate()`에 더해 `draw_ice_crystal()`/
 `draw_hearts()`/`draw_zzz()`(+ 동물 대기용 `draw_bichon_sitting()`/`draw_question_bubble()`,
 동물 달리기용 `paw_print_layer()`)로 PNG에 직접 구운 것이라, Swift 쪽 코드는 건드리지 않았습니다
 (애니메이션 우선순위/재생 로직은 그대로, 스프라이트 픽셀만 다시 구운 것). 어느 스킨을 쓸지는 펫의
@@ -343,7 +343,7 @@ Orca의 훅 서버는 열려있는 모든 에이전트 패널의 상태를 250ms
 핸드셰이크 로직은 실제 앱 없이 헤드리스로 검증할 수 있습니다 — 한 프로세스에서 두 서비스를 띄워 발견→신청→수락→결과 합의까지 확인하고 `SELFTEST PASS`를 찍습니다:
 
 ```sh
-cd ConnorPet
+cd apps/macos
 CONNORPET_SELFTEST=battle swift run
 ```
 
@@ -415,48 +415,49 @@ Claude Code는 세션마다 전체 대화 기록을 `~/.claude/projects/<cwd-slu
   | 팬텀 (Gengar) | — | — |
   | 비숑 (Bichon) | — | — |
 
-  이 매핑은 `AppDelegate.evolutionChains`(Swift)와 `scripts/build_sheet.py`의 `_EVOLUTIONS`가 서로 일치해야 합니다. 진화형 스프라이트도 기본 펫과 똑같은 파이프라인으로 생성되며, 앱 번들 리소스(`Resources/pets/<slug>/`)로만 들어가고 Orca 임포트용 `.codex-pet` 번들은 만들지 않습니다(사용자가 직접 고르는 펫이 아니라서).
+  이 매핑은 `AppDelegate.evolutionChains`(Swift)와 `tooling/scripts/build_sheet.py`의 `_EVOLUTIONS`가 서로 일치해야 합니다. 진화형 스프라이트도 기본 펫과 똑같은 파이프라인으로 생성되며, 앱 번들 리소스(`assets/pets/<slug>/`)로만 들어가고 Orca 임포트용 `.codex-pet` 번들은 만들지 않습니다(사용자가 직접 고르는 펫이 아니라서).
 
 ## 폴더 구조
 
+모노레포입니다 — 자세한 배치·단일 소스 규칙은 [`docs/STRUCTURE.md`](docs/STRUCTURE.md) 참고.
+
 ```
-totodile.codex-pet/     리아코(Totodile) Orca 임포트용 번들 (Settings → Experimental → Pet → Import)
-  pet.json                 매니페스트: 9행 스프라이트 레이아웃, 프레임별 타이밍
-  spritesheet.png            2400x1800, 최대 12열 x 9행, 프레임 200x200
-                               (행마다 프레임 수가 다릅니다 — 남는 칸은 투명)
-                               파이리만 3840x3200 / 프레임 320x320 — 아래 참고
+apps/
+  macos/                 macOS 앱 (Swift/AppKit) — pet.app/dmg. SwiftPM 타깃명은 ConnorPet 유지
+  windows/               Windows 앱 (Python/PySide6) — pet.exe. 자세한 건 apps/windows/README.md
 
-ditto.codex-pet/         메타몽(Ditto) Orca 임포트용 번들 — 위와 동일한 구조
-charmander.codex-pet/    파이리(Charmander) Orca 임포트용 번들 — 위와 동일한 구조
-squirtle.codex-pet/      꼬부기(Squirtle) Orca 임포트용 번들 — 위와 동일한 구조
-geodude.codex-pet/       꼬마돌(Geodude) Orca 임포트용 번들 — 위와 동일한 구조
-eevee.codex-pet/         이브이(Eevee) Orca 임포트용 번들 — 위와 동일한 구조
-chikorita.codex-pet/     치코리타(Chikorita) Orca 임포트용 번들 — 위와 동일한 구조
-torchic.codex-pet/       아차모(Torchic) Orca 임포트용 번들 — 위와 동일한 구조
-togepi.codex-pet/        토게피(Togepi) Orca 임포트용 번들 — 위와 동일한 구조
-tepig.codex-pet/         뚜꾸리(Tepig) Orca 임포트용 번들 — 위와 동일한 구조
-snorlax.codex-pet/       잠만보(Snorlax) Orca 임포트용 번들 — 위와 동일한 구조
-gengar.codex-pet/        팬텀(Gengar) Orca 임포트용 번들 — 위와 동일한 구조
-diglett.codex-pet/       디그다(Diglett) Orca 임포트용 번들 — 위와 동일한 구조
-pikachu.codex-pet/       피카츄(Pikachu) Orca 임포트용 번들 — 위와 동일한 구조
-larvitar.codex-pet/      애버라스(Larvitar) Orca 임포트용 번들 — 위와 동일한 구조
-dratini.codex-pet/       미뇽(Dratini) Orca 임포트용 번들 — 위와 동일한 구조
+assets/                  ★ 에셋 정본(단일 소스). mac·windows·Orca 번들이 전부 여기서 나온다
+  pets/<slug>/             pet.json(9행 레이아웃) + spritesheet.png(2400x1800, 12열x9행, 프레임 200x200)
+                             기본형+진화형 36종. (행마다 프레임 수가 달라 남는 칸은 투명)
+  effects/                 fire_jet·water_jet·zzz (생성형 이미지라 커밋)
+  app-icon.png
 
-scripts/build_sheet.py   재현 가능한 생성 스크립트 — `PETS` 리스트에 등록된 각 포켓몬마다
-                          PokeAPI의 5세대 배틀 스프라이트를 받아서 `<slug>.codex-pet/`과
-                          ConnorPet 앱의 번들 리소스를 함께 재생성합니다 (`python3 scripts/build_sheet.py`)
+shared/                  두 구현의 계약
+  BEHAVIOR.md              상태머신·decay·XP 임계치·진화 사슬
+  pet-manifest.schema.json pet.json JSON Schema
 
-scripts/make_app.sh        release 빌드를 독립 실행형 ConnorPet.app으로 감싸서 ~/Applications에
+dist/orca/<slug>.codex-pet/  Orca 임포트 번들 — 생성물(gitignore). `python3 tooling/scripts/sync_assets.py`
+                             (또는 build_sheet)로 assets/pets 에서 생성해 Settings → Experimental → Pet → Import
+
+tooling/scripts/build_sheet.py   재현 가능한 생성 스크립트 — `PETS` 리스트에 등록된 각 포켓몬마다
+                          PokeAPI의 5세대 배틀 스프라이트를 받아서 정본 `assets/pets`를 재생성하고,
+                          이어서 sync_assets로 mac 미러·Orca 번들까지 갱신합니다 (`python3 tooling/scripts/build_sheet.py`)
+
+tooling/scripts/sync_assets.py   정본(assets/·tooling/hooks/) → mac 타깃 미러(pets·effects·hooks) 실파일
+                          복사 + dist/orca 생성. `--check`로 드리프트 검사(CI). SwiftPM이 심링크를
+                          번들에 깨진 링크로 복사하므로 반드시 실파일 복사여야 함
+
+tooling/scripts/make_app.sh        release 빌드를 독립 실행형 ConnorPet.app으로 감싸서 ~/Applications에
                              설치합니다 (터미널과 무관하게 상주, 아래 "실행 방법" 참고)
 
-scripts/simulate_agent.py  실제 에이전트 없이 테스트하기 위한 도구. last-status.json에
+tooling/scripts/simulate_agent.py  실제 에이전트 없이 테스트하기 위한 도구. last-status.json에
                              가짜 패널 상태를 주입/삭제합니다 (아래 "테스트하기" 참고, Orca 소스 전용)
 
-scripts/install_claude_hooks.py  위 훅 설정을 ~/.claude/settings.json에 자동으로 병합/제거하는
+tooling/scripts/install_claude_hooks.py  위 훅 설정을 ~/.claude/settings.json에 자동으로 병합/제거하는
                                    설치 스크립트 (`--uninstall`로 원상복구). 기존 훅은 건드리지
                                    않고, 재실행해도 중복 추가되지 않음
 
-scripts/pet_hook_status.py  Claude Code 훅 핸들러 (선택 설치, 위 스크립트가 참조). ~/.claude/
+tooling/hooks/pet_hook_status.py  Claude Code 훅 핸들러 (선택 설치, 위 스크립트가 참조). ~/.claude/
                                  settings.json에 등록해두면 Stop/SessionEnd 훅이 발생할 때 이
                                  스크립트가 실행되어 ~/.claude/pet-status.json을 갱신합니다 (위
                                  "Claude Code 훅으로 헤롱헤롱/실패까지 보기" 참고)
@@ -465,7 +466,7 @@ preview/index.html        브라우저 전용 미리보기: 실제 spritesheet.p
                             불러와서 Orca의 실제 CSS 스텝핑 알고리즘(buildSpriteAnimationCss)으로
                             재생. 여러 프로젝트/에이전트를 흉내내는 컨트롤 패널 포함. Orca 설치 불필요.
 
-ConnorPet/                 진짜 결과물: 독립 실행형 macOS 앱
+apps/macos/                진짜 결과물: 독립 실행형 macOS 앱
   Package.swift              (Swift Package, `swift run`만 있으면 됨 — Xcode 불필요)
   Sources/ConnorPet/
     OrcaStatusWatcher.swift    last-status.json 폴링(1s) + 전체 상태 집계 (Orca 소스)
@@ -494,19 +495,15 @@ ConnorPet/                 진짜 결과물: 독립 실행형 macOS 앱
     SpeechBubbleWindow.swift        말풍선 패널 (펫 위에 뜨고, 화면 밖으로 안 나가게 보정)
     FlameWindow.swift               속성기 이펙트 전용 투명 창 (클릭 통과)
     AppDelegate.swift              전체 연결 + 메뉴바 포켓몬/소스 선택·경험치 바 토글·대전·Quit 메뉴 + 진화 스프라이트 교체
-    Resources/effects/              속성기·Zzz 이펙트 스프라이트 (fire_jet, water_jet, zzz)
-    Resources/pets/<slug>/          펫별 spritesheet.png + pet.json 번들 사본. 기본 14종(totodile, ditto,
-                                     charmander, squirtle, geodude, eevee, chikorita, torchic, togepi, tepig,
-                                     snorlax, gengar, diglett, pikachu)
-                                     + 진화형 14종 (croconaw, feraligatr, charmeleon, charizard, wartortle,
-                                     blastoise, graveler, golem, bayleef, meganium, combusken, blaziken, vaporeon,
-                                     dugtrio, raichu)
+    Resources/source-icons/         첫 실행 마법사 앱 아이콘 (mac 전용, committed)
+    Resources/{pets,effects,hooks}/ 생성물(git 추적 안 함) — 정본 assets/·tooling/hooks/ 에서
+                                     sync_assets.py 가 빌드 전에 실파일로 채운다
 
-windows/                   윈도우용 버전: macOS 앱을 Python + PySide6(Qt)로 포팅한 별개 빌드.
+apps/windows/              윈도우용 버전: macOS 앱을 Python + PySide6(Qt)로 포팅한 별개 빌드.
   pet_win/                   상태 워처·XP 모델·애니메이션 우선순위·스프라이트 로딩을 파이썬으로 포팅
                               (ClaudeCodeStatusWatcher/TokenUsage/PetAnimationState 대응). 펫 스프라이트는
-                              위 ConnorPet/Resources/pets 를 그대로 재사용(소스 오브 트루스 한 곳).
-  main.py / pet.spec         진입점 + PyInstaller 스펙(pet.exe 로 묶음, pets/ 리소스 번들 포함)
+                              정본 assets/pets 를 직접 읽는다(소스 오브 트루스 한 곳).
+  main.py / pet.spec         진입점 + PyInstaller 스펙(pet.exe 로 묶음, assets/pets 번들 포함)
   tests/                     headless(offscreen) 테스트 — 로직/세션파싱/17종 렌더 스모크
   README.md                  개발·빌드·테스트 절차
 ```
@@ -516,11 +513,11 @@ windows/                   윈도우용 버전: macOS 앱을 Python + PySide6(Qt
 ### 앱으로 설치해서 상주시키기 (권장)
 
 ```sh
-./scripts/make_app.sh                  # ~/Applications/ConnorPet.app 생성 (기본값)
+./tooling/scripts/make_app.sh                  # ~/Applications/ConnorPet.app 생성 (기본값)
 open -a ~/Applications/ConnorPet.app   # 실행
 ```
 
-`scripts/make_app.sh`는 release 빌드를 `.app` 번들로 감싸서 설치합니다. 이렇게 띄우면 **실행한 터미널을 닫아도 펫이 계속 떠 있습니다** (아래 `swift run`은 셸의 자식 프로세스로 실행되기 때문에 터미널을 닫으면 같이 죽습니다). Dock/앱 스위처에는 뜨지 않고 메뉴바에만 남으며(`LSUIElement`), 다음부터는 Spotlight에서 `ConnorPet`으로 바로 실행할 수 있습니다. 종료는 메뉴바 → Quit. 설치 위치를 바꾸고 싶으면 인자로 넘기면 됩니다 (`./scripts/make_app.sh /Applications`).
+`tooling/scripts/make_app.sh`는 release 빌드를 `.app` 번들로 감싸서 설치합니다. 이렇게 띄우면 **실행한 터미널을 닫아도 펫이 계속 떠 있습니다** (아래 `swift run`은 셸의 자식 프로세스로 실행되기 때문에 터미널을 닫으면 같이 죽습니다). Dock/앱 스위처에는 뜨지 않고 메뉴바에만 남으며(`LSUIElement`), 다음부터는 Spotlight에서 `ConnorPet`으로 바로 실행할 수 있습니다. 종료는 메뉴바 → Quit. 설치 위치를 바꾸고 싶으면 인자로 넘기면 됩니다 (`./tooling/scripts/make_app.sh /Applications`).
 
 코드를 고친 뒤에는 스크립트를 다시 실행하면 됩니다 — 떠 있는 인스턴스를 알아서 종료하고 번들을 교체합니다.
 
@@ -529,7 +526,7 @@ open -a ~/Applications/ConnorPet.app   # 실행
 ### 개발 중 실행
 
 ```sh
-cd ConnorPet
+cd apps/macos
 swift run
 ```
 
@@ -546,7 +543,7 @@ swift run
 
 ## dmg로 빌드해서 배포하기 (GitHub Actions)
 
-`swift run`으로 직접 띄우는 대신 더블클릭으로 설치되는 `.dmg`가 필요하면 `build-pet-dmg.yml` 워크플로우를 씁니다. **`cd ConnorPet && swift run`과 똑같이 12종 펫이 모두 든 단일 앱**(메뉴바에서 전환)을 빌드하며, 산출물 이름은 전부 `pet`으로 고정됩니다:
+`swift run`으로 직접 띄우는 대신 더블클릭으로 설치되는 `.dmg`가 필요하면 `build-pet-dmg.yml` 워크플로우를 씁니다. **`cd apps/macos && swift run`과 똑같이 12종 펫이 모두 든 단일 앱**(메뉴바에서 전환)을 빌드하며, 산출물 이름은 전부 `pet`으로 고정됩니다:
 
 1. GitHub 저장소의 **Actions** 탭 → **Build Pet DMG** 워크플로우 선택
 2. **Run workflow** 클릭 → 실행 (고를 옵션 없음 — 항상 전체 펫 빌드)
@@ -616,7 +613,7 @@ curl -fsSL "https://raw.githubusercontent.com/pet-egg/pet/main/install.sh?$(date
 
 **최초 1회 준비**
 
-1. **개인키를 Secret 에 등록** — 공개키와 짝이 되는 개인키는 최초 `generate_keys` 실행 때 만든 사람의 **로그인 키체인**에 있습니다. export 해서(`generate_keys -x private.key`) 저장소 Secret **`SPARKLE_EDDSA_PRIVATE_KEY`** 에 넣습니다. (키를 새로 만들려면 `generate_keys` 로 만들고, 출력된 새 `SUPublicEDKey` 를 `scripts/make_app.sh` 와 `build-pet-dmg.yml` 의 값으로 교체.)
+1. **개인키를 Secret 에 등록** — 공개키와 짝이 되는 개인키는 최초 `generate_keys` 실행 때 만든 사람의 **로그인 키체인**에 있습니다. export 해서(`generate_keys -x private.key`) 저장소 Secret **`SPARKLE_EDDSA_PRIVATE_KEY`** 에 넣습니다. (키를 새로 만들려면 `generate_keys` 로 만들고, 출력된 새 `SUPublicEDKey` 를 `tooling/scripts/make_app.sh` 와 `build-pet-dmg.yml` 의 값으로 교체.)
 2. **Pages 소스를 "GitHub Actions" 로** — 저장소 **Settings › Pages › Build and deployment › Source** 를 **GitHub Actions** 로 설정합니다. (워크플로의 `publish-appcast` 잡이 `appcast.xml` 을 여기로 배포합니다.)
 
 **릴리스 발행 (버전 낼 때마다)**
@@ -787,13 +784,13 @@ mouthByFrame` 으로 함께 내보냅니다. 입 위치는 프레임 절대좌�
 
 ## 테스트하기 (실제 에이전트 없이)
 
-`scripts/simulate_agent.py`는 **Orca 소스**용입니다 (메뉴에서 소스를 Orca로 바꾼 뒤 사용):
+`tooling/scripts/simulate_agent.py`는 **Orca 소스**용입니다 (메뉴에서 소스를 Orca로 바꾼 뒤 사용):
 
 ```sh
-python3 scripts/simulate_agent.py set web-app working
-python3 scripts/simulate_agent.py set api-server blocked   # 펫이 즉시 "waiting"으로
-python3 scripts/simulate_agent.py clear api-server         # "running"으로 복귀
-python3 scripts/simulate_agent.py clear-all                # "idle"로 복귀
+python3 tooling/scripts/simulate_agent.py set web-app working
+python3 tooling/scripts/simulate_agent.py set api-server blocked   # 펫이 즉시 "waiting"으로
+python3 tooling/scripts/simulate_agent.py clear api-server         # "running"으로 복귀
+python3 tooling/scripts/simulate_agent.py clear-all                # "idle"로 복귀
 ```
 
 `connor-pet-test:` 접두어가 붙은 키로만 기록해서, 실제 Orca 패널(UUID 형태)과 절대 충돌하지 않습니다. `clear-all`도 이 접두어가 붙은 항목만 지웁니다.
@@ -801,7 +798,7 @@ python3 scripts/simulate_agent.py clear-all                # "idle"로 복귀
 **Claude Code 소스**는 시뮬레이터가 없습니다 — 다른 터미널에서 `claude`를 실행해서 실제 세션을 하나 띄우고 프롬프트를 보내보면(`~/.claude/sessions/<pid>.json`의 `status`가 `busy`→달리기, 권한 승인창이 뜨면 `waiting`→얼음으로 바뀌는 동안) 펫이 바로 반응하는 걸 볼 수 있습니다. 위 훅까지 설정했다면 stdin으로 가짜 페이로드를 직접 넣어서 헤롱헤롱/실패도 트리거해볼 수 있습니다(단, 세션 파일이 그 세션을 `idle`로 두고 있어야 오버레이가 보입니다):
 
 ```sh
-echo '{"session_id":"<아무-id>","cwd":"/tmp"}' | python3 scripts/pet_hook_status.py done   # "review"(헤롱헤롱)로
+echo '{"session_id":"<아무-id>","cwd":"/tmp"}' | python3 tooling/hooks/pet_hook_status.py done   # "review"(헤롱헤롱)로
 rm ~/.claude/pet-status.json                                                                # 원상복구
 ```
 
@@ -821,7 +818,7 @@ Orca 자체 펫으로 쓰고 싶으면(Settings → Experimental → Pet → Imp
 
 ```sh
 pip install pillow
-python3 scripts/build_sheet.py
+python3 tooling/scripts/build_sheet.py
 ```
 
 ### 프레임 수와 확대 배율
@@ -843,13 +840,13 @@ python3 scripts/build_sheet.py
 재생 속도는 원본의 자연 속도(55프레임 x 100ms = 5.5초 루프)를 기준으로 잡습니다.
 `FRAME_SPEC` 의 주석에 모션마다 자연 속도의 몇 배인지 적어 두었습니다.
 
-이펙트 스프라이트(`scripts/effects/`)는 예외적으로 저장소에 커밋합니다. PokeAPI 에서
+이펙트 스프라이트(`assets/effects/`)는 예외적으로 저장소에 커밋합니다. PokeAPI 에서
 받을 수 있는 게 아니고 생성형 이미지라 스크립트를 다시 돌려도 똑같이 나오지 않기
 때문입니다. 파일이 없으면 그 연출만 건너뛰고 빌드는 통과합니다.
 
-`scripts/build_sheet.py`의 `PETS` 리스트에 등록된 각 포켓몬(현재 리아코 #158, 메타몽 #132, 파이리 #4, 꼬부기 #7, 꼬마돌 #74, 이브이 #133, 치코리타 #152, 아차모 #255, 토게피 #175, 뚜꾸리 #498, 잠만보 #143, 팬텀 #94, 디그다 #50, 피카츄 #25)마다 PokeAPI에서 5세대 애니메이션 배틀 스프라이트를 다시 받아서 `<slug>.codex-pet/{spritesheet.png,pet.json}`과 `ConnorPet/Sources/ConnorPet/Resources/pets/<slug>/`의 앱 번들 사본을 동시에 처음부터 재생성합니다 — 완전히 재현 가능하고, 바이너리 원본 에셋은 저장소에 커밋하지 않습니다. 새 포켓몬을 펫 선택 메뉴에 추가하려면 `PETS`에 항목을 하나 더 넣고 스크립트를 다시 돌린 뒤, `AppDelegate.swift`의 `availablePetSlugs`에 슬러그를 추가하면 됩니다.
+`tooling/scripts/build_sheet.py`의 `PETS` 리스트에 등록된 각 포켓몬(현재 리아코 #158, 메타몽 #132, 파이리 #4, 꼬부기 #7, 꼬마돌 #74, 이브이 #133, 치코리타 #152, 아차모 #255, 토게피 #175, 뚜꾸리 #498, 잠만보 #143, 팬텀 #94, 디그다 #50, 피카츄 #25)마다 PokeAPI에서 5세대 애니메이션 배틀 스프라이트를 다시 받아서 `dist/orca/<slug>.codex-pet/{spritesheet.png,pet.json}`과 `assets/pets/<slug>/`의 앱 번들 사본을 동시에 처음부터 재생성합니다 — 완전히 재현 가능하고, 바이너리 원본 에셋은 저장소에 커밋하지 않습니다. 새 포켓몬을 펫 선택 메뉴에 추가하려면 `PETS`에 항목을 하나 더 넣고 스크립트를 다시 돌린 뒤, `AppDelegate.swift`의 `availablePetSlugs`에 슬러그를 추가하면 됩니다.
 
-`scripts/build_sheet.py`의 `PETS` 리스트에 등록된 각 기본 포켓몬(현재 리아코 #158, 메타몽 #132, 파이리 #4, 꼬부기 #7, 꼬마돌 #74, 이브이 #133, 치코리타 #152, 아차모 #255, 토게피 #175, 뚜꾸리 #498, 잠만보 #143, 팬텀 #94, 디그다 #50, 피카츄 #25)과 `_EVOLUTIONS`의 진화형(크로콘 #159, 장크로다일 #160, 리자드 #5, 리자몽 #6, 어니부기 #8, 거북왕 #9, 데구리 #75, 딱구리 #76, 베이리프 #153, 메가니움 #154, 영뿔 #256, 번치코 #257, 샤미드 #134, 닥트리오 #51, 라이츄 #26)마다 PokeAPI에서 5세대 애니메이션 배틀 스프라이트를 다시 받아서 `ConnorPet/Sources/ConnorPet/Resources/pets/<slug>/`의 앱 번들 사본을(기본 펫은 추가로 `<slug>.codex-pet/`까지) 처음부터 재생성합니다 — 완전히 재현 가능하고, 바이너리 원본 에셋은 캐시에 받아둘 뿐 저장소에 원본을 커밋하지 않습니다. 새 포켓몬을 펫 선택 메뉴에 추가하려면 `PETS`에 항목을 하나 더 넣고 스크립트를 다시 돌린 뒤, `AppDelegate.swift`의 `availablePetSlugs`에 슬러그를 추가하면 됩니다. 진화형을 바꾸려면 `_EVOLUTIONS`와 `AppDelegate.evolutionChains`를 함께 수정하세요.
+`tooling/scripts/build_sheet.py`의 `PETS` 리스트에 등록된 각 기본 포켓몬(현재 리아코 #158, 메타몽 #132, 파이리 #4, 꼬부기 #7, 꼬마돌 #74, 이브이 #133, 치코리타 #152, 아차모 #255, 토게피 #175, 뚜꾸리 #498, 잠만보 #143, 팬텀 #94, 디그다 #50, 피카츄 #25)과 `_EVOLUTIONS`의 진화형(크로콘 #159, 장크로다일 #160, 리자드 #5, 리자몽 #6, 어니부기 #8, 거북왕 #9, 데구리 #75, 딱구리 #76, 베이리프 #153, 메가니움 #154, 영뿔 #256, 번치코 #257, 샤미드 #134, 닥트리오 #51, 라이츄 #26)마다 PokeAPI에서 5세대 애니메이션 배틀 스프라이트를 다시 받아서 `assets/pets/<slug>/`의 앱 번들 사본을(기본 펫은 추가로 `<slug>.codex-pet/`까지) 처음부터 재생성합니다 — 완전히 재현 가능하고, 바이너리 원본 에셋은 캐시에 받아둘 뿐 저장소에 원본을 커밋하지 않습니다. 새 포켓몬을 펫 선택 메뉴에 추가하려면 `PETS`에 항목을 하나 더 넣고 스크립트를 다시 돌린 뒤, `AppDelegate.swift`의 `availablePetSlugs`에 슬러그를 추가하면 됩니다. 진화형을 바꾸려면 `_EVOLUTIONS`와 `AppDelegate.evolutionChains`를 함께 수정하세요.
 
 > **피카츄만 예외 — PMD 스프라이트를 씁니다.** gen5 배틀 스프라이트는 "두 발로 선 정면 1장"이라 아무리 굴려도 진짜 걷기/달리기 사이클이 안 나옵니다(회전·스쿼시 편법의 원인). 피카츄는 방향별·다프레임 이동 애니메이션이 있는 [PMDCollab/SpriteCollab](https://github.com/PMDCollab/SpriteCollab)의 0025(피카츄, Pokémon Mystery Dungeon 스프라이트)를 받아 씁니다. `build_sheet.py`의 `build_pikachu_pmd()`가 `AnimData.xml`을 읽어 8방향 시트에서 필요한 방향(정면=Down / 오른쪽=Right / 왼쪽=Left)의 Walk 사이클을 뽑고, 잠듦은 Sleep 포즈, 실패는 Hurt 포즈에 매핑한 뒤 나머지 상태 스킨(Zzz·얼음·하트·빨강 떨림)은 다른 펫과 같은 공용 헬퍼로 입혀 동일한 9행 포맷으로 굽습니다. 다른 펫과 앱이 읽는 방식은 완전히 같습니다. (진화형 라이츄는 지시대로 피카츄만 예외라 여전히 gen5입니다.)
 
@@ -976,7 +973,7 @@ Code 같은 것들입니다. 목록에 뜬 숫자는 그 앱의 버전 문자열
 (`FullDiskAccess.isAppBundle`). "만드는 명령 복사" 를 누르면 아래가 클립보드에 들어갑니다.
 
 ```sh
-bash <저장소>/scripts/make_app.sh && open ~/Applications/ConnorPet.app
+bash <저장소>/tooling/scripts/make_app.sh && open ~/Applications/ConnorPet.app
 ```
 
 이렇게 만든 `.app` 은 `CFBundleName = ConnorPet` 과 코드 서명 식별자

@@ -1,6 +1,6 @@
 name: Build Pet DMG
 
-# 메뉴바 펫 앱(ConnorPet/)을 `cd ConnorPet && swift run` 과 동일하게 **모든 펫을 포함한
+# 메뉴바 펫 앱(apps/macos/)을 `cd apps/macos && swift run` 과 동일하게 **모든 펫을 포함한
 # 단일 앱**으로 빌드해 pet.app / pet.dmg 를 만드는 파이프라인. v* 태그 푸시로만 트리거되며
 # 빌드 후 릴리스 생성 + Pages 배포까지 자동으로 이어진다. 예전에는 펫 하나를 골라 그 펫만
 # 남기게 소스를 패치했지만, 지금은 메뉴바에서 12종을 모두 전환할 수 있는 기본 빌드를 그대로
@@ -24,17 +24,24 @@ jobs:
           # 기본 shallow 체크아웃은 태그가 없고 rev-list --count 도 1로 나온다.
           fetch-depth: 0
 
+      - name: Sync assets into mac target
+        run: |
+          # 펫·이펙트·훅 정본은 assets/·tooling/hooks/ 에 있고, mac 타깃의
+          # Resources/{pets,effects,hooks} 는 git 에 없다(생성물). SwiftPM 이
+          # 번들하려면 빌드 전에 실파일로 채워야 한다. Orca 번들도 여기서 생성.
+          python3 tooling/scripts/sync_assets.py
+
       - name: Build (release)
         run: |
-          cd ConnorPet
+          cd apps/macos
           # 펫을 고르지 않는다 — 기본 availablePetSlugs(전체)를 그대로 빌드한다.
           swift build -c release
 
       - name: Generate app icon
         run: |
-          cd ConnorPet
+          cd apps/macos
           # 아이콘은 assets/app-icon.png 하나로 고정(펫 무관).
-          cp ../assets/app-icon.png /tmp/icon_master.png
+          cp ../../assets/app-icon.png /tmp/icon_master.png
 
           mkdir -p AppIcon.iconset
           for size in 16 32 128 256 512; do
@@ -46,7 +53,7 @@ jobs:
 
       - name: Assemble pet.app bundle
         run: |
-          cd ConnorPet
+          cd apps/macos
           APP="pet.app"
           EXE="pet"
           BUNDLE_ID="io.github.pet-egg.pet"
@@ -131,14 +138,14 @@ jobs:
 
       - name: Create pet.dmg
         run: |
-          cd ConnorPet
+          cd apps/macos
           hdiutil create -volname "pet" -srcfolder "pet.app" -ov -format UDZO "pet.dmg"
 
       - name: Upload dmg artifact
         uses: actions/upload-artifact@v4
         with:
           name: pet-dmg
-          path: ConnorPet/pet.dmg
+          path: apps/macos/pet.dmg
 
       # Sparkle appcast 서명·생성. 자동 업데이트를 켜려면 저장소 Secret 에
       # SPARKLE_EDDSA_PRIVATE_KEY (generate_keys 로 만든 개인키, base64) 를 넣어야 한다.
@@ -148,7 +155,7 @@ jobs:
         env:
           SPARKLE_EDDSA_PRIVATE_KEY: ${{ secrets.SPARKLE_EDDSA_PRIVATE_KEY }}
         run: |
-          cd ConnorPet
+          cd apps/macos
           if [ -z "$SPARKLE_EDDSA_PRIVATE_KEY" ]; then
             echo "::notice::SPARKLE_EDDSA_PRIVATE_KEY 시크릿이 없어 appcast 서명/생성을 건너뜁니다 (DMG 만 업로드)."
             exit 0
@@ -170,11 +177,11 @@ jobs:
           echo "생성됨: appcast.xml (원본: $GENERATED)"
 
       - name: Upload appcast artifact
-        if: ${{ hashFiles('ConnorPet/appcast.xml') != '' }}
+        if: ${{ hashFiles('apps/macos/appcast.xml') != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: pet-appcast
-          path: ConnorPet/appcast.xml
+          path: apps/macos/appcast.xml
 
       - name: Job summary
         run: |
