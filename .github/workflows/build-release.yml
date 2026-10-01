@@ -167,11 +167,15 @@ jobs:
           cp "pet.dmg" appcast_out/
           # 개인키는 stdin(--ed-key-file -)으로 넘겨 디스크에 남기지 않는다.
           # download-url-prefix + DMG 파일명(pet.dmg) = 최종 다운로드 URL:
-          #   https://github.com/pet-egg/pet/releases/latest/download/pet.dmg
-          # → 그 릴리스에 pet.dmg 를 올리면 된다.
+          #   https://github.com/pet-egg/pet/releases/download/<태그>/pet.dmg
+          # **버전이 박힌 주소**여야 한다. 예전에는 releases/latest/download/ 였는데, 그
+          # 주소는 릴리스가 바뀔 때 움직여서 "피드의 서명"과 "그 주소가 내려 주는 dmg"가
+          # 어긋나는 구간이 생긴다 — 릴리스가 실패하거나 피드 배포가 늦으면 사용자 앱에
+          # "The update is improperly signed" 가 뜬다(v0.2.0 에서 실제로 났다). 버전 주소면
+          # 피드의 각 항목이 자기 dmg 만 가리켜 언제 확인해도 서명이 맞는다.
           printf '%s' "$SPARKLE_EDDSA_PRIVATE_KEY" | "$BIN/generate_appcast" appcast_out \
             --ed-key-file - \
-            --download-url-prefix "https://github.com/pet-egg/pet/releases/latest/download/"
+            --download-url-prefix "https://github.com/pet-egg/pet/releases/download/${GITHUB_REF_NAME}/"
           # generate_appcast 는 앱 Info.plist 의 SUFeedURL 파일명(= appcast.xml)을 그대로
           # 따서 파일을 만든다. 실제 생성된 유일한 .xml 을 집어서 최상위로 꺼낸다.
           GENERATED="$(ls appcast_out/*.xml | head -1)"
@@ -253,13 +257,28 @@ jobs:
           Copy-Item dist\pet.exe pet.exe
           Compress-Archive -Path pet.exe -DestinationPath "pet-windows-x64.zip" -Force
 
+      # 두 파일을 **같은 폴더**에서 올린다. upload-artifact 는 여러 경로의 공통 상위
+      # 폴더를 기준으로 상대 경로를 보존하므로, dist/pet.exe 와 pet-windows-x64.zip 을
+      # 올리면 아티팩트 안에 dist/ 가 남아 release 잡에서 dist/dist/pet.exe 가 되고
+      # `no matches found for dist/pet.exe` 로 릴리스 생성이 통째로 실패한다(v0.2.0).
+      # Package zip 단계가 이미 apps/windows/pet.exe 로 복사해 두므로 그것을 쓴다.
+      # if-no-files-found 는 매칭이 **전부** 0개일 때만 실패하므로 두 파일을 따로 확인한다.
+      - name: Verify windows artifact files
+        working-directory: apps/windows
+        shell: pwsh
+        run: |
+          foreach ($f in @("pet.exe", "pet-windows-x64.zip")) {
+            if (-not (Test-Path $f)) { Write-Error "$f 가 없다 — 아티팩트 경로가 어긋났다"; exit 1 }
+          }
+
       - name: Upload windows artifact
         uses: actions/upload-artifact@v4
         with:
           name: pet-windows
           path: |
-            apps/windows/dist/pet.exe
+            apps/windows/pet.exe
             apps/windows/pet-windows-x64.zip
+          if-no-files-found: error
 
   # ── 아래 잡들은 태그 푸시(refs/tags/v*)일 때만 실행된다. 트리거가 v* 태그뿐이라
   #    사실상 항상 도는 잡이지만, 안전장치로 ref 조건을 그대로 둔다. ──
@@ -289,16 +308,19 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           # 맥(pet.dmg)·윈도우(pet.exe/zip)를 같은 릴리스에. 이미 있는 태그면 create 가
-          # 실패 → 그때는 asset 만 덮어쓴다(--clobber).
+          # 실패 → 그때는 asset 만 덮어쓰고(--clobber) latest 로 지정한다. 지정을 빼면
+          # 수동 복구본·재실행에서 install.ps1 의 latest/download/pet.exe 가 다른 릴리스를 받는다.
+          ls -l dist/pet.dmg dist/pet.exe dist/pet-windows-x64.zip   # 하나라도 없으면 여기서 멈춘다
           gh release create "$GITHUB_REF_NAME" \
             dist/pet.dmg dist/pet.exe dist/pet-windows-x64.zip \
             --repo "$GITHUB_REPOSITORY" \
             --title "$GITHUB_REF_NAME" \
             --notes "맥(pet.dmg)·윈도우(pet.exe) 통합 릴리스 ($GITHUB_REF_NAME). 맥은 Sparkle 자동 업데이트 지원." \
             --latest \
-          || gh release upload "$GITHUB_REF_NAME" \
-               dist/pet.dmg dist/pet.exe dist/pet-windows-x64.zip \
-               --clobber --repo "$GITHUB_REPOSITORY"
+          || { gh release upload "$GITHUB_REF_NAME" \
+                 dist/pet.dmg dist/pet.exe dist/pet-windows-x64.zip \
+                 --clobber --repo "$GITHUB_REPOSITORY" \
+               && gh release edit "$GITHUB_REF_NAME" --latest --repo "$GITHUB_REPOSITORY"; }
 
   # Homebrew Cask(pet-egg/homebrew-pet)의 version/sha256 을 이번 릴리스로 갱신한다.
   # 다른 저장소(탭)에 push 해야 하므로 그 레포에 write 권한이 있는 PAT 를 시크릿
@@ -340,7 +362,11 @@ jobs:
   # appcast 는 SPARKLE_EDDSA_PRIVATE_KEY 시크릿이 있어야 생성되므로, 시크릿이 없으면
   # 아티팩트가 없어 이 잡은 실패한다(= 릴리스에는 서명 키가 필수라는 신호).
   publish-appcast:
-    needs: build-macos
+    # release 잡이 끝난 뒤에만 피드를 낸다. 피드의 enclosure 는
+    # releases/latest/download/pet.dmg 라서, 릴리스가 실패한 채 피드만 나가면 그 주소가
+    # 이전 버전 dmg 를 내려 주고 새 dmg 의 EdDSA 서명과 어긋난다 — 사용자 앱에
+    # "The update is improperly signed" 가 뜬다(v0.2.0 에서 실제로 났다).
+    needs: [build-macos, release]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
