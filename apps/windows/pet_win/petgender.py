@@ -33,6 +33,7 @@ FEMALE_RATE_BY_BASE = {
     "dratini": 4,
     "ditto": -1,
     "bichon": 4,
+    "pinkbean": -1,  # 유일 초월자(메이플) — 무성(메타몽과 같게)
 }
 
 # 기호와 색(RGB). 색칠은 app.py 가 QColor 로 한다.

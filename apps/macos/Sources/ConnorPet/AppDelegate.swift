@@ -86,7 +86,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // (see scripts/build_sheet.py's PETS list, which is the source of truth for
     // this set). Display names shown in the menu come from each pet's own
     // manifest rather than being duplicated here.
-    private static let availablePetSlugs = ["totodile", "ditto", "charmander", "squirtle", "geodude", "eevee", "chikorita", "torchic", "togepi", "tepig", "snorlax", "gengar", "diglett", "pikachu", "larvitar", "dratini", "bichon"]
+    private static let availablePetSlugs = ["totodile", "ditto", "charmander", "squirtle", "geodude", "eevee", "chikorita", "torchic", "togepi", "tepig", "snorlax", "gengar", "diglett", "pikachu", "larvitar", "dratini", "bichon", "pinkbean"]
 
     /// 대전을 하지 않는 펫. 흰 비숑은 실제 반려견이라 **동물보호 차원에서 대전 불가** —
     /// 신청/수락/메뉴가 모두 이 목록을 보고 막힌다(불꽃 발사체로 서로를 쏘는 대전은
@@ -97,8 +97,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// 포켓몬 상태이상(얼음)이 어색하므로 대기(blocked/waiting) 상태를 "앉아서 고개
     /// 갸웃 + ? 말풍선"으로 다르게 그린다 — 그 리스킨은 빌드 타임에 이뤄지고
     /// (scripts/build_sheet.py 의 category 분기, PETS 의 "category":"animal"), 여기
-    /// 분류는 그와 짝을 이룬다. 아직 펫이 없는 카테고리(메이플스토리)는 UI 에서
-    /// "준비 중"으로 노출된다.
+    /// 분류는 그와 짝을 이룬다. 메이플스토리 카테고리는 핑크빈(비포켓몬)이 채운다 —
+    /// 핑크빈 스프라이트는 PokeAPI 가 아니라 maplestory.io 에서 받아
+    /// tooling/scripts/build_pinkbean_sheet.py 로 따로 굽는다.
     enum PetCategory: String, CaseIterable {
         case pokemon
         case animal
@@ -115,6 +116,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// slug → 대분류. 여기 없는 펫은 .pokemon 으로 본다(build_sheet.py 도 동일 기본값).
     private static let petCategories: [String: PetCategory] = [
         "bichon": .animal,
+        "pinkbean": .maplestory,
     ]
 
     static func category(of slug: String) -> PetCategory { petCategories[slug] ?? .pokemon }
@@ -191,6 +193,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         "togepi": [],
         "snorlax": [],
         "gengar": [],
+        "pinkbean": [],
     ]
 
     // Whether the pet evolves at all (menu toggle). When off it stays the base

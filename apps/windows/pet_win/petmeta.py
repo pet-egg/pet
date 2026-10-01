@@ -8,7 +8,7 @@ from __future__ import annotations
 AVAILABLE_PET_SLUGS = [
     "totodile", "ditto", "charmander", "squirtle", "geodude", "eevee",
     "chikorita", "torchic", "togepi", "tepig", "snorlax", "gengar",
-    "diglett", "pikachu", "larvitar", "dratini", "bichon",
+    "diglett", "pikachu", "larvitar", "dratini", "bichon", "pinkbean",
 ]
 
 # 기본형 → 진화형 목록(1차, 2차). 빈 배열이면 진화 없음.
@@ -28,6 +28,7 @@ EVOLUTION_CHAINS = {
     "togepi": [],
     "snorlax": [],
     "gengar": [],
+    "pinkbean": [],
 }
 
 

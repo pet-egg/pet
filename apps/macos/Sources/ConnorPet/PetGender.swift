@@ -61,6 +61,7 @@ enum PetGenders {
         "dratini": 4,
         "ditto": -1,
         "bichon": 4,
+        "pinkbean": -1,   // 유일 초월자(메이플) — 본가 성비가 없어 무성으로 둔다(메타몽과 같게).
     ]
 
     private static let key = "petGenders"

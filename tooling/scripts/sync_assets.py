@@ -40,7 +40,7 @@ ORCA_DIR = os.path.join(REPO_ROOT, "dist", "orca")
 ORCA_SLUGS = [
     "totodile", "ditto", "charmander", "squirtle", "geodude", "eevee",
     "chikorita", "torchic", "togepi", "tepig", "snorlax", "gengar",
-    "diglett", "pikachu", "larvitar", "dratini", "bichon",
+    "diglett", "pikachu", "larvitar", "dratini", "bichon", "pinkbean",
 ]
 
 
