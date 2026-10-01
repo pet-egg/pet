@@ -261,8 +261,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // 반영·저장하고, 이후엔 저장된 값을 그대로 복원한다.
         maybeRunFirstRunWizard()
 
-        guard let sheet = try? Self.loadSpriteSheet(slug: selectedPetSlug) else {
-            fatalError("connor-pet: bundled pet '\(selectedPetSlug)' not found")
+        // 선택된 펫을 못 읽어도 앱을 통째로 떨구지 않는다. 저장값·마법사·강제 env 가
+        // 이 빌드에 없는 펫을 집었을 수 있으니, 실제로 로드되는 다른 펫으로 폴백한다
+        // (petDisplayNames 는 위 루프에서 성공적으로 읽힌 펫만 담으므로 그 항목은 반드시
+        // 로드된다). 단 하나도 로드 안 됐으면(리소스 미동기화 등) 안내 후 깔끔히 종료한다.
+        let sheet: SpriteSheet
+        if let loaded = try? Self.loadSpriteSheet(slug: selectedPetSlug) {
+            sheet = loaded
+        } else if let fallbackSlug = Self.availablePetSlugs.first(where: { petDisplayNames.keys.contains($0) }),
+                  let loaded = try? Self.loadSpriteSheet(slug: fallbackSlug) {
+            NSLog("connor-pet: 펫 '\(selectedPetSlug)' 로드 실패 → '\(fallbackSlug)' 로 폴백")
+            selectedPetSlug = fallbackSlug
+            Self.savePetSlug(fallbackSlug)
+            sheet = loaded
+        } else {
+            Self.presentMissingResourcesAlertAndTerminate()
+            return
         }
 
         // 창 너비는 그 펫의 프레임 크기에 비례한다(파이리·꼬부기는 400px 프레임이라
@@ -1734,6 +1748,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let sheet = try? Self.loadSpriteSheet(slug: slug) else { return nil }
         sheetCache[slug] = sheet
         return sheet
+    }
+
+    // 번들에 펫 스프라이트가 하나도 없을 때(Resources/pets 미동기화 등) 호출된다.
+    // 예전에는 여기서 fatalError 로 앱이 크래시 리포터와 함께 떨어졌는데, 사용자에겐
+    // 원인·해결법을 알 수 없는 "그냥 죽음"이라 대신 명확한 안내 창을 띄우고 종료한다.
+    private static func presentMissingResourcesAlertAndTerminate() {
+        NSLog("connor-pet: 번들에 로드 가능한 펫이 하나도 없음 — 리소스 미동기화로 추정")
+        let alert = NSAlert()
+        alert.alertStyle = .critical
+        alert.messageText = "펫 리소스를 찾을 수 없어요"
+        alert.informativeText = """
+        펫 스프라이트(Resources/pets)가 번들에 없어 앱을 시작할 수 없습니다.
+
+        개발 중이라면 저장소 루트에서 아래를 실행한 뒤 다시 켜 주세요:
+            python3 tooling/scripts/sync_assets.py
+
+        정식 배포본에서 이 창이 떴다면 앱을 다시 설치해 주세요.
+        """
+        alert.addButton(withTitle: "종료")
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
+        NSApp.terminate(nil)
     }
 
     static func loadSpriteSheet(slug: String) throws -> SpriteSheet {
