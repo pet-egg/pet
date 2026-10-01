@@ -47,6 +47,11 @@ FRAME_DEFAULT = 200
 FRAME_BY_PET = {
     "charmeleon": 360, "charizard": 400,
     "wartortle": 280, "blastoise": 400,
+    # 미뇽 계열도 파이리 계열처럼 진화할수록 커지게 한다. 예전에는 셋 다 기본 프레임이라
+    # 진화해도 1.03배·1.21배로 거의 그대로였다.
+    # 프레임은 내용보다 70~80px 크게 — 리자드·리자몽과 같은 여백이다. 더 크게 잡으면
+    # 펫 주변 투명 영역만 늘어 창이 쓸데없이 커진다.
+    "dragonair": 280, "dragonite": 320,
 }
 FRAME = FRAME_DEFAULT
 SPRITE_TARGET = SPRITE_TARGET_DEFAULT if False else (170, 150)
@@ -66,6 +71,9 @@ SPRITE_TARGET_DEFAULT = (170, 150)
 SPRITE_TARGET_BY_PET = {
     "charmeleon": (340, 290), "charizard": (360, 370),
     "wartortle": (250, 235), "blastoise": (360, 340),
+    # 파이리 계열의 높이 비(리자드 1.67배·리자몽 1.93배)에 맞춘 값. 정수 배율이라 정확히는
+    # 못 맞추고, 실측해 가장 가까운 배율이 나오도록 잡았다.
+    "dragonair": (300, 230), "dragonite": (330, 260),
 }
 ROWS_ORDER = [
     "idle", "running-right", "running-left", "waving",
@@ -96,7 +104,8 @@ FRAME_SPEC = {
     "running":       (12, 180),   # 2.5x — 작업 중
     "review":        (12, 220),   # 2.1x — 헤롱헤롱
     "fire-breath":   (10, 110),   # 5.0x — 불뿜기. 짧고 세게
-    "water-gun":     (10, 110),   # 5.0x — 물뿜기
+    "water-gun":     (10, 110),   # 5.0x — 물뿜기,
+    "hyper-beam":    (10, 110),   # 5.0x — 파괴광선. 불·물과 같은 길이·속도
 }
 COLS = max(n for n, _ in FRAME_SPEC.values())
 
@@ -114,6 +123,11 @@ SKILLS = {
     "squirtle":   {"row": "water-gun",   "effect": "water_jet.png", "mouth": (0.179, 0.360)},
     "wartortle":  {"row": "water-gun",   "effect": "water_jet.png", "mouth": (0.280, 0.340)},
     "blastoise":  {"row": "water-gun",   "effect": "water_jet.png", "mouth": (0.300, 0.400)},
+    # 미뇽 계열 — 파괴광선. 입 위치는 서있기 줄의 스프라이트(전 프레임 합집합 상자)를
+    # 확대해 5% 격자로 읽은 값이다. 잠듦 줄은 Zzz 가 합성돼 상자가 커지므로 쓰지 않는다.
+    "dratini":    {"row": "hyper-beam",  "effect": "hyper_beam.png", "mouth": (0.320, 0.270)},
+    "dragonair":  {"row": "hyper-beam",  "effect": "hyper_beam.png", "mouth": (0.360, 0.300)},
+    "dragonite":  {"row": "hyper-beam",  "effect": "hyper_beam.png", "mouth": (0.170, 0.260)},
 }
 EXTRA_ROWS = {slug: [cfg["row"]] for slug, cfg in SKILLS.items()}
 

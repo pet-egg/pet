@@ -13,6 +13,7 @@ enum PetAnimationName: String, CaseIterable {
     /// 한 펫에 하나만 있으므로 단축키를 공유해도 부딪히지 않는다.
     case fireBreath = "fire-breath"
     case waterGun = "water-gun"
+    case hyperBeam = "hyper-beam"
     case runningRight = "running-right"
     case runningLeft = "running-left"
 
@@ -21,12 +22,34 @@ enum PetAnimationName: String, CaseIterable {
         skillNoun != nil
     }
 
-    /// 브리핑 문구에 쓰는 한 글자 이름. "불 뿜은 뒤로…" / "물 뿜은 뒤로…" 처럼
-    /// 지금 그 펫이 쓴 기술에 맞춰 말하기 위한 것이다. 속성기가 아니면 nil.
+    /// 브리핑 문구에 쓰는 이름. "불 뿜은 뒤로…" / "광선 쏜 뒤로…" 처럼 지금 그 펫이
+    /// 쓴 기술에 맞춰 말하기 위한 것이다. 속성기가 아니면 nil.
     var skillNoun: String? {
         switch self {
         case .fireBreath: return "불"
         case .waterGun:   return "물"
+        case .hyperBeam:  return "광선"
+        default:          return nil
+        }
+    }
+
+    /// 기술을 쓴 직후의 말. 불·물은 "뿜었다" 지만 광선은 "쐈다" 다 — 동사를 이름과
+    /// 따로 두지 않으면 "광선 뿜었다" 가 된다.
+    var skillDidPhrase: String? {
+        switch self {
+        case .fireBreath: return "불 뿜었다"
+        case .waterGun:   return "물 뿜었다"
+        case .hyperBeam:  return "광선 쐈다"
+        default:          return nil
+        }
+    }
+
+    /// 브리핑의 "~한 뒤로" 앞부분. "불 뿜은" / "광선 쏜".
+    var skillSincePhrase: String? {
+        switch self {
+        case .fireBreath: return "불 뿜은"
+        case .waterGun:   return "물 뿜은"
+        case .hyperBeam:  return "광선 쏜"
         default:          return nil
         }
     }
@@ -35,7 +58,7 @@ enum PetAnimationName: String, CaseIterable {
     /// 열린 상태에서 누를 단축키. 나머지는 골라 두면 그 자세로 고정된다.
     var menuShortcut: String? {
         switch self {
-        case .fireBreath, .waterGun: return "a"
+        case .fireBreath, .waterGun, .hyperBeam: return "a"
         case .waving:     return "s"
         default:          return nil
         }
@@ -58,6 +81,7 @@ enum PetAnimationName: String, CaseIterable {
         case .failed:       return "실패"
         case .fireBreath:   return "불뿜기 — 여기까지 정리, 이후 작업만 브리핑"
         case .waterGun:     return "물뿜기 — 여기까지 정리, 이후 작업만 브리핑"
+        case .hyperBeam:    return "파괴광선 — 여기까지 정리, 이후 작업만 브리핑"
         case .runningRight: return "오른쪽보기"
         case .runningLeft:  return "왼쪽보기"
         }

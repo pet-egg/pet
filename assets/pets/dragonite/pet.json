@@ -4,8 +4,8 @@
   "description": "Custom connor-pet build (evolved form): 망나뇽 (Dragonite) reacts to live Orca/Claude Code agent status, skinned as Pokémon status conditions — blocked/waiting=Freeze, done=Infatuation, nothing=Sleep, working=running. Built from PokeAPI gen5 battle sprites.",
   "spritesheetPath": "spritesheet.png",
   "frame": {
-    "width": 200,
-    "height": 200
+    "width": 320,
+    "height": 320
   },
   "fps": 6,
   "defaultAnimation": "idle",
@@ -161,6 +161,78 @@
         220,
         220
       ]
+    },
+    "hyper-beam": {
+      "row": 9,
+      "frames": 10,
+      "frameDurationsMs": [
+        110,
+        110,
+        110,
+        110,
+        110,
+        110,
+        110,
+        110,
+        110,
+        110
+      ]
     }
+  },
+  "skill": {
+    "row": "hyper-beam",
+    "effect": "hyper_beam.png",
+    "mouthByFrame": [
+      {
+        "x": 81,
+        "y": 99,
+        "grow": 0.0
+      },
+      {
+        "x": 87,
+        "y": 99,
+        "grow": 0.0
+      },
+      {
+        "x": 93,
+        "y": 99,
+        "grow": 0.0
+      },
+      {
+        "x": 101,
+        "y": 99,
+        "grow": 0.45
+      },
+      {
+        "x": 105,
+        "y": 99,
+        "grow": 0.588
+      },
+      {
+        "x": 109,
+        "y": 99,
+        "grow": 0.725
+      },
+      {
+        "x": 113,
+        "y": 99,
+        "grow": 0.863
+      },
+      {
+        "x": 117,
+        "y": 99,
+        "grow": 1.0
+      },
+      {
+        "x": 92,
+        "y": 99,
+        "grow": 0.0
+      },
+      {
+        "x": 81,
+        "y": 99,
+        "grow": 0.0
+      }
+    ]
   }
 }

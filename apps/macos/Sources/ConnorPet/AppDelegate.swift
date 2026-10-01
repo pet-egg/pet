@@ -324,8 +324,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             Self.saveFireBreathAt(Date())
             guard let self, let petFrame = self.window?.frame else { return }
             // 이 콜백은 속성기를 실제로 쓴 직후에만 불리므로 noun 은 항상 있다.
-            let noun = self.currentSkillNoun ?? "한 방"
-            self.bubble?.show(text: "\(noun) 뿜었다! 여기까지 정리하고 앞으로 할 일만 볼게.",
+            let did = self.currentSkill?.skillDidPhrase ?? "한 방 날렸다"
+            self.bubble?.show(text: "\(did)! 여기까지 정리하고 앞으로 할 일만 볼게.",
                               above: petFrame, duration: 3.5)
         }
         view.onHoverEnter = { [weak self] in
@@ -973,10 +973,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// 체크포인트를 찍은 시점의 펫이 아니라 **지금 보이는 펫** 기준이다. 펫을 바꿔
     /// 가며 쓰는 상황에서 어느 쪽이 맞다고 하기 어려운데, 말풍선을 띄우는 그 펫이
     /// 자기 기술로 말하는 편이 덜 어색하다.
-    private var currentSkillNoun: String? {
-        guard let row = petView?.currentSpriteSheet.manifest.skill?.row,
-              let name = PetAnimationName(rawValue: row) else { return nil }
-        return name.skillNoun
+    private var currentSkill: PetAnimationName? {
+        guard let row = petView?.currentSpriteSheet.manifest.skill?.row else { return nil }
+        return PetAnimationName(rawValue: row)
     }
 
     /// 지금 말해야 할 브리프 묶음과 앞에 붙일 문장. 클릭과 예열이 **같은** 묶음을
@@ -998,7 +997,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 )
                 // 체크포인트를 찍어 둔 뒤 속성기가 없는 펫으로 바꿔 놓았을 수 있다.
                 // 그 펫이 "불 뿜은 뒤로" 라고 말하면 이상하므로 중립 문구를 쓴다.
-                let since = currentSkillNoun.map { "\($0) 뿜은 뒤로" } ?? "여기까지 정리한 뒤로"
+                let since = currentSkill?.skillSincePhrase.map { "\($0) 뒤로" } ?? "여기까지 정리한 뒤로"
                 return (briefs, "\(since) 이것들만 남았어.",
                         "\(since) 새로 시작한 작업은 아직 없어. 깨끗해.", window)
             }

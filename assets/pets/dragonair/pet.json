@@ -4,8 +4,8 @@
   "description": "Custom connor-pet build (evolved form): 신뇽 (Dragonair) reacts to live Orca/Claude Code agent status, skinned as Pokémon status conditions — blocked/waiting=Freeze, done=Infatuation, nothing=Sleep, working=running. Built from PokeAPI gen5 battle sprites.",
   "spritesheetPath": "spritesheet.png",
   "frame": {
-    "width": 200,
-    "height": 200
+    "width": 280,
+    "height": 280
   },
   "fps": 6,
   "defaultAnimation": "idle",
@@ -161,6 +161,78 @@
         220,
         220
       ]
+    },
+    "hyper-beam": {
+      "row": 9,
+      "frames": 10,
+      "frameDurationsMs": [
+        110,
+        110,
+        110,
+        110,
+        110,
+        110,
+        110,
+        110,
+        110,
+        110
+      ]
     }
+  },
+  "skill": {
+    "row": "hyper-beam",
+    "effect": "hyper_beam.png",
+    "mouthByFrame": [
+      {
+        "x": 113,
+        "y": 94,
+        "grow": 0.0
+      },
+      {
+        "x": 120,
+        "y": 94,
+        "grow": 0.0
+      },
+      {
+        "x": 126,
+        "y": 94,
+        "grow": 0.0
+      },
+      {
+        "x": 135,
+        "y": 94,
+        "grow": 0.45
+      },
+      {
+        "x": 140,
+        "y": 94,
+        "grow": 0.588
+      },
+      {
+        "x": 144,
+        "y": 94,
+        "grow": 0.725
+      },
+      {
+        "x": 149,
+        "y": 94,
+        "grow": 0.863
+      },
+      {
+        "x": 153,
+        "y": 94,
+        "grow": 1.0
+      },
+      {
+        "x": 125,
+        "y": 94,
+        "grow": 0.0
+      },
+      {
+        "x": 113,
+        "y": 94,
+        "grow": 0.0
+      }
+    ]
   }
 }
