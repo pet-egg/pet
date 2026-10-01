@@ -1468,9 +1468,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// 마법사에서 고른 펫으로 창을 띄운다.
     private func maybeRunFirstRunWizard() {
         guard !Self.didCompleteFirstRun() else { return }
-        // 헤드리스 셀프테스트/설정 PNG 덤프/강제 펫 지정 실행에서는 모달로 막지 않는다.
+        // 헤드리스 셀프테스트/디버그 덤프/강제 펫 지정 실행에서는 모달로 막지 않는다.
+        // 디버그 덤프는 `CONNORPET_DEBUG_` 로 시작하는 변수 전부다 — 하나씩 나열했더니
+        // 새로 만든 덤프(우클릭 메뉴)가 빠져, 마법사를 안 끝낸 환경에서 모달에 막혀
+        // 아무것도 찍지 않고 종료도 하지 않았다.
         let env = ProcessInfo.processInfo.environment
-        if env["CONNORPET_SELFTEST"] != nil || env["CONNORPET_DEBUG_SETTINGS"] != nil || env["CONNORPET_PET"] != nil {
+        let debugDump = env.keys.contains { $0.hasPrefix("CONNORPET_DEBUG_") }
+        if env["CONNORPET_SELFTEST"] != nil || debugDump || env["CONNORPET_PET"] != nil {
             return
         }
 
