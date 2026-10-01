@@ -640,7 +640,7 @@ git push origin v1.0.0
 
 태그(`v*`)를 푸시하면 `Build Pet DMG` 워크플로가 자동으로:
 - `pet.dmg` + 서명된 `appcast.xml` 빌드 (`git describe` 로 버전 주입)
-- **릴리스 생성 + `pet.dmg` 업로드** → 다운로드 URL `https://github.com/pet-egg/pet/releases/latest/download/pet.dmg` (appcast 의 enclosure 와 일치)
+- **릴리스 생성 + `pet.dmg` 업로드** → 다운로드 URL `https://github.com/pet-egg/pet/releases/latest/download/pet.dmg`. appcast 의 enclosure 는 이 주소가 아니라 **버전이 박힌** `releases/download/<태그>/pet.dmg` 를 씁니다 — latest 주소는 릴리스마다 움직여 피드의 서명과 어긋나는 구간이 생기기 때문입니다(v0.2.0 에서 `improperly signed` 가 났습니다). 피드 배포(`publish-appcast`)는 릴리스 잡이 성공한 뒤에만 돕니다
 - 서명된 **`appcast.xml` 을 Pages 로 배포**
 
 → 기존 사용자 앱이 다음 실행 때 새 버전을 감지합니다. (배포는 `v*` 태그 푸시로만 트리거됩니다 — 수동 `workflow_dispatch` 트리거는 제거됐습니다.)
