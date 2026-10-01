@@ -3,6 +3,11 @@ import AppKit
 // Headless LAN-battle handshake test: `CONNORPET_SELFTEST=battle swift run`.
 // Runs two BattleServices in-process and verifies discovery → challenge →
 // accept → agreed outcome, then exits. Never returns.
+// 완전체 수집 보너스: `CONNORPET_SELFTEST=collection swift run`.
+if ProcessInfo.processInfo.environment["CONNORPET_SELFTEST"] == "collection" {
+    runCollectionBonusSelfTest()
+}
+
 if ProcessInfo.processInfo.environment["CONNORPET_SELFTEST"] == "battle" {
     runBattleSelfTest()
 }

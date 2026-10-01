@@ -131,6 +131,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// 이 둘을 섞어서 실제로 났던 버그: 대전 화면이 리자몽으로 진화해 놓고도 파이리를
     /// 그렸다. 상대는 진화형으로 보이는데(광고하는 slug 는 표시형이다) 내 쪽만
     /// 기본형이라 더 눈에 띄었다.
+    /// 지금 펫에 붙는 수집 보너스 — 이 펫을 뺀 완전체 수로 정한다.
+    private var collectionBonus: Double {
+        CollectionBonus.bonus(forCompleteCount:
+            CollectionBonus.completeCount(in: petTokens, excluding: selectedPetSlug))
+    }
+
     private var displayedPetSlug: String {
         currentDisplaySlug.isEmpty ? selectedPetSlug : currentDisplaySlug
     }
@@ -549,7 +555,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard let self else { return 0 }
             let tokens = self.petTokens[self.selectedPetSlug] ?? 0
             let stage = self.evolutionEnabled ? XPModel.stage(tokens: tokens) : 0
-            return battlePower(tokens: tokens, stage: stage)
+            // 다른 펫들 중 완전체 수만큼 스탯을 올린다(CollectionBonus). 파워는 상대에게도
+            // 실려 가므로 양쪽 계산이 같은 값을 쓴다 — 프로토콜은 바뀌지 않는다.
+            return CollectionBonus.apply(self.collectionBonus, to: battlePower(tokens: tokens, stage: stage))
         }
         service.onStare = { [weak self] fromName, fromPet, nickname in
             self?.presentStare(fromName: fromName, fromPet: fromPet, nickname: nickname)
@@ -1598,7 +1606,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // 종 이름은 보이는 쪽(진화형), 지어 준 이름은 기본형에 저장돼 있다.
         let species = Self.koreanPetName(displayedPetSlug)
         let name = PetNames.display(for: selectedPetSlug, fallback: species)
-        return "\(name)\n\(Self.xpDetail(tokens: tokens))"
+        // 완전체 한 마리당 별 하나(CollectionBonus.stars). 없으면 이름만.
+        let stars = CollectionBonus.stars(forCompleteCount: CollectionBonus.completeCount(in: petTokens))
+        let title = stars.isEmpty ? name : "\(name) \(stars)"
+        return "\(title)\n\(Self.xpDetail(tokens: tokens))"
     }
 
     private static func xpDetail(tokens: Double) -> String {
@@ -1909,6 +1920,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 /// 경로(changePet / changeStatusSource / setEvolutionEnabled / toggleClaudeHooks
 /// 등)로 위임해, 어느 쪽에서 바꾸든 동작·저장·메뉴바 갱신이 동일하다.
 extension AppDelegate: SettingsActionsDelegate {
+    var settingsCollectionBonus: (complete: Int, others: Int, bonus: Double) {
+        (CollectionBonus.completeCount(in: petTokens),
+         CollectionBonus.completeCount(in: petTokens, excluding: selectedPetSlug),
+         collectionBonus)
+    }
+
     var settingsPetNickname: String? { PetNames.name(for: selectedPetSlug) }
     /// 이름을 비웠을 때 돌아갈 이름. 보이는 쪽(진화형)이어야 안내가 맞는다.
     var settingsPetSpeciesName: String { Self.koreanPetName(displayedPetSlug) }
