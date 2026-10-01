@@ -56,6 +56,8 @@ protocol SettingsActionsDelegate: AnyObject {
     // 대전 / 노려보기 (같은 wifi 상대)
     /// 이 맥에 쌓인 대전 전적 한 줄. 예: "12승 8패 · 승률 60%"
     var settingsBattleRecord: String { get }
+    /// 완전체 수(전체)와 지금 펫에 붙는 보너스(0...0.5).
+    var settingsCollectionBonus: (complete: Int, bonus: Double) { get }
     var settingsBattlePeers: [(id: String, name: String, dnd: Bool)] { get }
     /// 지금 고른 펫이 대전할 수 있는지. false(흰 비숑)면 신청 버튼 대신 안내를 띄운다.
     var settingsCurrentPetCanBattle: Bool { get }
@@ -618,6 +620,18 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         rows.append(RowSpec(title: "대전 전적",
                             subtitle: "\(d.settingsBattleRecord) · 이기면 +\(reward) EXP",
                             control: nil, dimmed: true))
+
+        // 완전체 수집 보너스. 몇 마리를 다 키웠고 지금 펫이 얼마나 받는지를 함께 보여
+        // 준다 — "다른" 펫에게만 주는 보너스라 지금 펫이 완전체면 자기 자신은 빠진다.
+        let collection = d.settingsCollectionBonus
+        let percent = Int((collection.bonus * 100).rounded())
+        let capNote = collection.bonus >= CollectionBonus.cap ? " (최대)" : ""
+        rows.append(RowSpec(
+            title: "완전체 보너스",
+            subtitle: collection.complete == 0
+                ? "경험치를 끝까지 채운 펫 1마리당 다른 펫 스탯 +5% (최대 +50%)"
+                : "완전체 \(collection.complete)마리 · 지금 펫 스탯 +\(percent)%\(capNote)",
+            control: nil, dimmed: true))
 
         let peers = d.settingsBattlePeers
         guard !peers.isEmpty else {
