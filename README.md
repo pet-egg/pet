@@ -1,10 +1,10 @@
 # pet
 
-실제 [Orca](https://github.com/stablyai/orca), [Claude Code](https://claude.com/claude-code), 또는 [Claude 데스크톱 앱](https://claude.ai/download)의 프로젝트/에이전트 상태에 반응하는 데스크톱 펫 — 리아코 (Totodile), 메타몽 (Ditto), 파이리 (Charmander), 꼬부기 (Squirtle), 꼬마돌 (Geodude), 이브이 (Eevee), 치코리타 (Chikorita), 아차모 (Torchic), 토게피 (Togepi), 뚜꾸리 (Tepig), 잠만보 (Snorlax), 팬텀 (Gengar), 디그다 (Diglett), 피카츄 (Pikachu), 애버라스 (Larvitar), 미뇽 (Dratini), 그리고 흰 **비숑 (Bichon)** 중 메뉴바 아이콘에서 언제든 전환 가능합니다. 펫은 **대분류(포켓몬 / 동물 / 메이플스토리)**로 묶여 있고, 펫 선택 UI(설정 창·첫 실행 마법사)가 이 그룹으로 구분해 보여줍니다. (비숑만 포켓몬이 아니라 직접 도트로 그린 **동물** 캐릭터이고, **실제 반려견이라 대전은 하지 않습니다** — 아래 대전 항목 참고.) Orca에 임포트하는 `.codex-pet` 번들이 아니라, **완전히 별개의 macOS 앱**으로 만들었습니다. Orca/Claude Code/Claude 앱과 다른 프로세스로 떠 있으면서, 바깥에서 그 상태를 읽어옵니다. 여기에 더해, 같은 Wi-Fi에서 앱을 켜둔 사람끼리 **디지몬 다마고치 스타일 1:1 대전**도 할 수 있습니다 (아래 "같은 wifi에서 대전하기" 참고).
+실제 [Orca](https://github.com/stablyai/orca), [Claude Code](https://claude.com/claude-code), 또는 [Claude 데스크톱 앱](https://claude.ai/download)의 프로젝트/에이전트 상태에 반응하는 데스크톱 펫 — 리아코 (Totodile), 메타몽 (Ditto), 파이리 (Charmander), 꼬부기 (Squirtle), 꼬마돌 (Geodude), 이브이 (Eevee), 치코리타 (Chikorita), 아차모 (Torchic), 토게피 (Togepi), 뚜꾸리 (Tepig), 잠만보 (Snorlax), 팬텀 (Gengar), 디그다 (Diglett), 피카츄 (Pikachu), 애버라스 (Larvitar), 미뇽 (Dratini), 흰 **비숑 (Bichon)**, 그리고 메이플스토리의 **핑크빈 (Pink Bean)** 중 메뉴바 아이콘에서 언제든 전환 가능합니다. 펫은 **대분류(포켓몬 / 동물 / 메이플스토리)**로 묶여 있고, 펫 선택 UI(설정 창·첫 실행 마법사)가 이 그룹으로 구분해 보여줍니다. (비숑은 포켓몬이 아니라 직접 도트로 그린 **동물** 캐릭터라 **실제 반려견으로서 대전은 하지 않습니다**; 핑크빈은 **메이플스토리** 캐릭터로, 스프라이트는 PokeAPI 가 아니라 maplestory.io 에서 받아 따로 굽습니다 — 아래 대전·스프라이트 항목 참고.) Orca에 임포트하는 `.codex-pet` 번들이 아니라, **완전히 별개의 macOS 앱**으로 만들었습니다. Orca/Claude Code/Claude 앱과 다른 프로세스로 떠 있으면서, 바깥에서 그 상태를 읽어옵니다. 여기에 더해, 같은 Wi-Fi에서 앱을 켜둔 사람끼리 **디지몬 다마고치 스타일 1:1 대전**도 할 수 있습니다 (아래 "같은 wifi에서 대전하기" 참고).
 
 에이전트의 **실제 토큰 사용량**을 읽어와 펫 아래에 경험치(XP) 바로 보여주고, 경험치가 쌓이면 펫이 **진화**합니다 (리아코→크로콘→장크로다일 등). 자세한 내용은 아래 "토큰 사용량 경험치 바 & 진화" 참고.
 
-펫은 **부화(처음 키우기 시작) 시 포켓몬 본가 성비(gender rate)에 따라 성별**을 한 번 받습니다 — 이름 오른쪽에 수컷 `♂`(파랑) / 암컷 `♀`(분홍)로 표시되고(맥은 호버 이름표, 윈도우는 펫 오른쪽 위), 메타몽은 무성이라 기호가 없습니다. 한 번 정해지면 진화해도 바뀌지 않으며, 이미 키우던 펫도 업데이트하면 **경험치는 그대로 유지**되고 성별만 새로 배정됩니다. 성비 표는 아래 "부화 시 성별" 참고.
+펫은 **부화(처음 키우기 시작) 시 포켓몬 본가 성비(gender rate)에 따라 성별**을 한 번 받습니다 — 이름 오른쪽에 수컷 `♂`(파랑) / 암컷 `♀`(분홍)로 표시되고(맥은 호버 이름표, 윈도우는 펫 오른쪽 위), 메타몽·핑크빈은 무성이라 기호가 없습니다. 한 번 정해지면 진화해도 바뀌지 않으며, 이미 키우던 펫도 업데이트하면 **경험치는 그대로 유지**되고 성별만 새로 배정됩니다. 성비 표는 아래 "부화 시 성별" 참고.
 
 ![펫 목록](docs/pet-gallery.png)
 
@@ -415,7 +415,7 @@ Claude Code는 세션마다 전체 대화 기록을 `~/.claude/projects/<cwd-slu
 - 진화 지점은 **비율이 아니라 실제 토큰 수**로 고정돼 있습니다 (`XPModel.stageTokens`) — **2억 토큰**에서 1단계, **5억 토큰**에서 2단계. 바가 가득 차는 기준(`maxTokens`)은 마지막 진화 지점과 같아서, 바가 꽉 차는 순간이 최종 진화 시점입니다.
 
   예전에는 "바 만렙 100만 토큰의 10%/30%" 였는데, 실측 하루 사용량이 (입력+출력+캐시생성 기준) 1,500만이라 앱을 켜자마자 바가 가득 차고 **1단계를 건너뛰어 곧장 2단계로** 갔습니다. 1단계 진화형을 볼 수가 없었습니다. 지금 기준이면 1단계까지 약 2주, 2단계까지 약 5주입니다.
-- 진화 체인은 다음 도감 번호를 그대로 씁니다(메타몽·토게피·잠만보·팬텀은 진화 없음, 비숑은 포켓몬이 아니라 진화 없음, 이브이·디그다·피카츄는 1단계만):
+- 진화 체인은 다음 도감 번호를 그대로 씁니다(메타몽·토게피·잠만보·팬텀은 진화 없음, 비숑·핑크빈은 포켓몬이 아니라 진화 없음, 이브이·디그다·피카츄는 1단계만):
 
   | 기본 | 1단계 | 2단계 |
   |---|---|---|
@@ -436,6 +436,7 @@ Claude Code는 세션마다 전체 대화 기록을 `~/.claude/projects/<cwd-slu
   | 잠만보 (Snorlax) | — | — |
   | 팬텀 (Gengar) | — | — |
   | 비숑 (Bichon) | — | — |
+  | 핑크빈 (Pink Bean) | — | — |
 
   이 매핑은 `AppDelegate.evolutionChains`(Swift)와 `tooling/scripts/build_sheet.py`의 `_EVOLUTIONS`가 서로 일치해야 합니다. 진화형 스프라이트도 기본 펫과 똑같은 파이프라인으로 생성되며, 앱 번들 리소스(`assets/pets/<slug>/`)로만 들어가고 Orca 임포트용 `.codex-pet` 번들은 만들지 않습니다(사용자가 직접 고르는 펫이 아니라서).
 
@@ -443,14 +444,14 @@ Claude Code는 세션마다 전체 대화 기록을 `~/.claude/projects/<cwd-slu
 
 펫을 **처음 키우기 시작할 때(부화)** 포켓몬 본가의 성비(gender rate)에 따라 성별을 **한 번** 받습니다. 한 번 정해지면 **진화해도 바뀌지 않고**(기본형 slug 에 저장 — 이름과 같은 규칙), 경험치와는 **완전히 별개로 저장**되므로 이미 키우던 펫도 업데이트하면 **경험치는 그대로 유지**되고 성별만 새로 배정됩니다.
 
-- **표시**: 이름 **오른쪽**에 수컷 `♂`(파랑) · 암컷 `♀`(분홍). 맥은 펫에 마우스를 올렸을 때 뜨는 이름표(이름 줄)에 붙고, 윈도우는 이름 표시가 없어 펫 **오른쪽 위**에 기호만 띄웁니다. 메타몽은 무성이라 기호가 없습니다.
+- **표시**: 이름 **오른쪽**에 수컷 `♂`(파랑) · 암컷 `♀`(분홍). 맥은 펫에 마우스를 올렸을 때 뜨는 이름표(이름 줄)에 붙고, 윈도우는 이름 표시가 없어 펫 **오른쪽 위**에 기호만 띄웁니다. 메타몽·핑크빈은 무성이라 기호가 없습니다.
 - **성비**(암컷 확률, PokeAPI `gender_rate` 8분위 기준):
 
   | 성비 | 펫 |
   |---|---|
   | ♂ 87.5% / ♀ 12.5% | 리아코·파이리·꼬부기·이브이·치코리타·아차모·토게피·뚜꾸리·잠만보 |
   | ♂ 50% / ♀ 50% | 꼬마돌·팬텀·디그다·피카츄·애버라스·미뇽 · 비숑(비포켓몬이라 50:50) |
-  | 무성 | 메타몽 |
+  | 무성 | 메타몽 · 핑크빈(메이플 초월자라 성별 없음) |
 
   구현은 `PetGender.swift`(맥)와 `pet_win/petgender.py`(윈도우)의 성비 표가 서로 일치해야 합니다. 회귀는 `CONNORPET_SELFTEST=gender swift run`(맥) / `pytest`(윈도우)로 확인합니다.
 
@@ -541,7 +542,7 @@ apps/windows/              윈도우용 버전: macOS 앱을 Python + PySide6(Qt
                               (ClaudeCodeStatusWatcher/TokenUsage/PetAnimationState 대응). 펫 스프라이트는
                               정본 assets/pets 를 직접 읽는다(소스 오브 트루스 한 곳).
   main.py / pet.spec         진입점 + PyInstaller 스펙(pet.exe 로 묶음, assets/pets 번들 포함)
-  tests/                     headless(offscreen) 테스트 — 로직/세션파싱/17종 렌더 스모크
+  tests/                     headless(offscreen) 테스트 — 로직/세션파싱/18종 렌더 스모크
   README.md                  개발·빌드·테스트 절차
 ```
 
@@ -580,7 +581,7 @@ swift run
 
 ## dmg로 빌드해서 배포하기 (GitHub Actions)
 
-`swift run`으로 직접 띄우는 대신 더블클릭으로 설치되는 `.dmg`가 필요하면 `build-release.yml` 워크플로우가 `v*` 태그로 **맥(pet.dmg)·윈도우(pet.exe)를 함께** 빌드해 같은 릴리스에 올립니다. 맥은 `cd apps/macos && swift run`과 똑같이 17종 펫이 모두 든 단일 앱(메뉴바에서 전환)이며, 산출물 이름은 `pet`으로 고정됩니다:
+`swift run`으로 직접 띄우는 대신 더블클릭으로 설치되는 `.dmg`가 필요하면 `build-release.yml` 워크플로우가 `v*` 태그로 **맥(pet.dmg)·윈도우(pet.exe)를 함께** 빌드해 같은 릴리스에 올립니다. 맥은 `cd apps/macos && swift run`과 똑같이 18종 펫이 모두 든 단일 앱(메뉴바에서 전환)이며, 산출물 이름은 `pet`으로 고정됩니다:
 
 1. GitHub 저장소의 **Actions** 탭 → **Build Pet DMG** 워크플로우 선택
 2. **Run workflow** 클릭 → 실행 (고를 옵션 없음 — 항상 전체 펫 빌드)
@@ -907,6 +908,8 @@ python3 tooling/scripts/build_sheet.py
 `tooling/scripts/build_sheet.py`의 `PETS` 리스트에 등록된 각 기본 포켓몬(현재 리아코 #158, 메타몽 #132, 파이리 #4, 꼬부기 #7, 꼬마돌 #74, 이브이 #133, 치코리타 #152, 아차모 #255, 토게피 #175, 뚜꾸리 #498, 잠만보 #143, 팬텀 #94, 디그다 #50, 피카츄 #25)과 `_EVOLUTIONS`의 진화형(크로콘 #159, 장크로다일 #160, 리자드 #5, 리자몽 #6, 어니부기 #8, 거북왕 #9, 데구리 #75, 딱구리 #76, 베이리프 #153, 메가니움 #154, 영뿔 #256, 번치코 #257, 샤미드 #134, 닥트리오 #51, 라이츄 #26)마다 PokeAPI에서 5세대 애니메이션 배틀 스프라이트를 다시 받아서 `assets/pets/<slug>/`의 앱 번들 사본을(기본 펫은 추가로 `<slug>.codex-pet/`까지) 처음부터 재생성합니다 — 완전히 재현 가능하고, 바이너리 원본 에셋은 캐시에 받아둘 뿐 저장소에 원본을 커밋하지 않습니다. 새 포켓몬을 펫 선택 메뉴에 추가하려면 `PETS`에 항목을 하나 더 넣고 스크립트를 다시 돌린 뒤, `AppDelegate.swift`의 `availablePetSlugs`에 슬러그를 추가하면 됩니다. 진화형을 바꾸려면 `_EVOLUTIONS`와 `AppDelegate.evolutionChains`를 함께 수정하세요.
 
 > **피카츄만 예외 — PMD 스프라이트를 씁니다.** gen5 배틀 스프라이트는 "두 발로 선 정면 1장"이라 아무리 굴려도 진짜 걷기/달리기 사이클이 안 나옵니다(회전·스쿼시 편법의 원인). 피카츄는 방향별·다프레임 이동 애니메이션이 있는 [PMDCollab/SpriteCollab](https://github.com/PMDCollab/SpriteCollab)의 0025(피카츄, Pokémon Mystery Dungeon 스프라이트)를 받아 씁니다. `build_sheet.py`의 `build_pikachu_pmd()`가 `AnimData.xml`을 읽어 8방향 시트에서 필요한 방향(정면=Down / 오른쪽=Right / 왼쪽=Left)의 Walk 사이클을 뽑고, 잠듦은 Sleep 포즈, 실패는 Hurt 포즈에 매핑한 뒤 나머지 상태 스킨(Zzz·얼음·하트·빨강 떨림)은 다른 펫과 같은 공용 헬퍼로 입혀 동일한 9행 포맷으로 굽습니다. 다른 펫과 앱이 읽는 방식은 완전히 같습니다. (진화형 라이츄는 지시대로 피카츄만 예외라 여전히 gen5입니다.)
+
+> **핑크빈만 예외 — 포켓몬이 아니라 PokeAPI를 못 씁니다.** 핑크빈은 메이플스토리 캐릭터라 `build_sheet.py`(PokeAPI)로는 만들 수 없어, **별도 스크립트 `tooling/scripts/build_pinkbean_sheet.py`** 로 굽습니다. 이 스크립트는 메이플 클라이언트 에셋을 추출/공개하는 커뮤니티 API [maplestory.io](https://maplestory.io)(GMS 230)에서 공식 스프라이트를 받아 정본 `assets/pets/pinkbean/`을 재생성하고(그 뒤 `sync_assets.py` 로 mac 미러·Orca 번들 갱신), 다른 펫과 똑같은 **9행 포맷**으로 맞춥니다. 상태→모션 매핑이 특별합니다 — **idle=잠자는 Zzz 이모트(흑백으로 구움, mob 8820000 skill6)**, running=걷기(move), waiting=금빛 마법진(skill1), review=기본자세(stand), 마우스 호버(jumping 슬롯)=초록 해골 구슬(skill3), waving=캐스팅(attack1), failed=어둠 고치 변신(die1) — 모두 mob 8820000/8820001. 효과가 커서 프레임만 220×220을 씁니다(다른 펫 200). 핑크빈은 포켓몬이 아니라 진화·`build_sheet.py` `PETS`·`_EVOLUTIONS` 와 무관하고, 대신 `availablePetSlugs`/`petmeta.AVAILABLE_PET_SLUGS`/`sync_assets.ORCA_SLUGS` 에만 등록합니다. 스프라이트 저작권은 **© Nexon**(개인/학습용 참고). 다시 구우려면 `python3 tooling/scripts/build_pinkbean_sheet.py && python3 tooling/scripts/sync_assets.py`.
 
 ### 진화형 크기 — 미뇽 계열
 
