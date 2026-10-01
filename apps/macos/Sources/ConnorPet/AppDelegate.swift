@@ -1920,8 +1920,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 /// 경로(changePet / changeStatusSource / setEvolutionEnabled / toggleClaudeHooks
 /// 등)로 위임해, 어느 쪽에서 바꾸든 동작·저장·메뉴바 갱신이 동일하다.
 extension AppDelegate: SettingsActionsDelegate {
-    var settingsCollectionBonus: (complete: Int, bonus: Double) {
-        (CollectionBonus.completeCount(in: petTokens), collectionBonus)
+    var settingsCollectionBonus: (complete: Int, others: Int, bonus: Double) {
+        (CollectionBonus.completeCount(in: petTokens),
+         CollectionBonus.completeCount(in: petTokens, excluding: selectedPetSlug),
+         collectionBonus)
     }
 
     var settingsPetNickname: String? { PetNames.name(for: selectedPetSlug) }

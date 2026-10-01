@@ -77,6 +77,61 @@ func runCollectionBonusSelfTest() -> Never {
           + " (파워 \(String(format: "%.2f", base)) → \(String(format: "%.2f", boosted)))")
     guard winsBoosted > winsBase else { fail("보너스를 받아도 승률이 오르지 않는다") }
 
+    // ── 작은 보너스도 실제로 작동하는가 ──
+    //
+    // 예전 피해식은 보너스를 그냥 반올림해서 파워가 0.125·0.375·0.625·0.875 경계를
+    // 넘을 때만 피해가 달라졌다. 그래서 +5%(1마리)가 대부분의 파워에서 전투 결과를 한 판도
+    // 바꾸지 못했는데, 위 검사는 +50% 만 봐서 통과시켰다(외부 리뷰가 잡았다).
+    //
+    // 1) 평균 피해가 파워에 정비례하는가 — 피해 = 1~2 굴림 + 4×파워(확률적 반올림)이므로
+    //    한 방의 평균은 1.5 + 4×파워 여야 한다.
+    func meanHit(_ power: Double, seeds: ClosedRange<UInt64>) -> Double {
+        var total = 0, count = 0
+        for seed in seeds {
+            let o = simulateBattle(seed: seed, powers: [.challenger: power, .accepter: 0])
+            for r in o.rounds where r.attacker == .challenger && !r.missed {
+                total += r.damage; count += 1
+            }
+        }
+        return Double(total) / Double(max(count, 1))
+    }
+    for p in [0.2, 0.35, 0.5, 0.7] {
+        let got = meanHit(p, seeds: 1...6000)
+        let want = 1.5 + 4 * p
+        guard abs(got - want) < 0.06 else {
+            fail("파워 \(p) 의 평균 피해 \(String(format: "%.3f", got)) — \(String(format: "%.3f", want)) 여야 한다(정비례가 깨졌다)")
+        }
+    }
+    print("[selftest] 평균 피해 = 1.5 + 4×파워 (파워 0.2·0.35·0.5·0.7 에서 오차 0.06 이내)")
+
+    // 2) +5%·+25% 가 넓은 파워 구간에서 승률을 실제로 올리는가. 구간마다 따로 보면 판 수가
+    //    적어 흔들리므로 구간을 모두 합쳐 본다.
+    func totalWins(boost: Double) -> Int {
+        var wins = 0
+        for step in 1...18 {
+            let p = Double(step) * 0.05
+            let mine = CollectionBonus.apply(boost, to: p)
+            for seed in UInt64(1)...UInt64(600) {
+                if simulateBattle(seed: seed, powers: [.challenger: mine, .accepter: p]).winner == .challenger { wins += 1 }
+            }
+        }
+        return wins
+    }
+    let w0 = totalWins(boost: 0), w5 = totalWins(boost: 0.05), w25 = totalWins(boost: 0.25)
+    let games = 18 * 600
+    print("[selftest] 파워 0.05~0.90 전 구간 합산 승률: 보너스 없음 \(w0 * 1000 / games / 10)% · +5% \(w5 * 1000 / games / 10)% · +25% \(w25 * 1000 / games / 10)%")
+    guard w5 > w0 else { fail("+5% 가 승률을 올리지 못한다 (\(w0) → \(w5))") }
+    guard w25 > w5 else { fail("+25% 가 +5% 보다 승률이 높지 않다 (\(w5) → \(w25))") }
+
+    // 3) 파워 1.0 은 여전히 한 방이어야 한다 — 확률적 반올림이 이 약속을 깨면 안 된다.
+    for seed in UInt64(1)...UInt64(500) {
+        let o = simulateBattle(seed: seed, powers: [.challenger: 1.0, .accepter: 0])
+        for r in o.rounds where r.attacker == .challenger && !r.missed {
+            guard r.damage >= 5 else { fail("파워 1.0 의 적중이 \(r.damage) — 한 방(5 이상)이어야 한다") }
+        }
+    }
+    print("[selftest] 파워 1.0 의 적중은 500판 모두 5 이상 (한 방 유지)")
+
     // ── 마우스 오버 별 ──
     guard CollectionBonus.stars(forCompleteCount: 0) == "" else { fail("완전체 0마리인데 별이 있다") }
     guard CollectionBonus.stars(forCompleteCount: 1) == "⭐️" else { fail("1마리 → 별 하나여야 한다") }

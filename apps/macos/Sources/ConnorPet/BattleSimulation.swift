@@ -118,7 +118,20 @@ func simulateBattle(seed: UInt64,
             if !dodged && !countered {
                 // 기존 산정식(1~2)은 그대로 두고 성장 보너스를 더한다. 파워 1.0 이면
                 // 보너스가 startHP-1 이라 어떤 굴림이든 한 방에 끝난다.
-                let bonus = Int((Double(startHP - 1) * (powers[attacker] ?? 0)).rounded())
+                //
+                // 보너스는 **확률적으로 반올림**한다 — 소수부만큼의 확률로 1 을 더한다.
+                // 그냥 반올림하면 파워가 0.125·0.375·0.625·0.875 경계를 넘을 때만 피해가
+                // 달라져서, 완전체 보너스 +5% 가 18개 파워 구간 중 16개에서 전투 결과를
+                // 한 판도 바꾸지 못했다. 확률적 반올림은 피해의 기대값을 파워에 정비례하게
+                // 만들어 +5% 가 언제나 +5% 로 작동한다. 파워 1.0 은 소수부가 0 이라 여전히
+                // 한 방이다.
+                //
+                // 굴림이 한 번 늘어 같은 시드의 결과가 예전과 달라지지만, 결과는 받는 쪽이
+                // 계산해 보내므로 두 기기가 어긋나지 않는다(프로토콜 세대는 그대로).
+                let exact = Double(startHP - 1) * (powers[attacker] ?? 0)
+                let whole = Int(exact.rounded(.down))
+                let roundUp = Double(rng.int(in: 0...9_999)) / 10_000 < exact - Double(whole)
+                let bonus = whole + (roundUp ? 1 : 0)
                 damage = rng.int(in: 1...2) + bonus
                 hp[target]! -= damage
             }

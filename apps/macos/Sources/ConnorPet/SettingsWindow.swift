@@ -56,8 +56,8 @@ protocol SettingsActionsDelegate: AnyObject {
     // 대전 / 노려보기 (같은 wifi 상대)
     /// 이 맥에 쌓인 대전 전적 한 줄. 예: "12승 8패 · 승률 60%"
     var settingsBattleRecord: String { get }
-    /// 완전체 수(전체)와 지금 펫에 붙는 보너스(0...0.5).
-    var settingsCollectionBonus: (complete: Int, bonus: Double) { get }
+    /// 완전체 수(전체), 지금 펫을 뺀 완전체 수, 지금 펫에 붙는 보너스(0...0.5).
+    var settingsCollectionBonus: (complete: Int, others: Int, bonus: Double) { get }
     var settingsBattlePeers: [(id: String, name: String, dnd: Bool)] { get }
     /// 지금 고른 펫이 대전할 수 있는지. false(흰 비숑)면 신청 버튼 대신 안내를 띄운다.
     var settingsCurrentPetCanBattle: Bool { get }
@@ -626,12 +626,17 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         let collection = d.settingsCollectionBonus
         let percent = Int((collection.bonus * 100).rounded())
         let capNote = collection.bonus >= CollectionBonus.cap ? " (최대)" : ""
-        rows.append(RowSpec(
-            title: "완전체 보너스",
-            subtitle: collection.complete == 0
-                ? "경험치를 끝까지 채운 펫 1마리당 다른 펫 스탯 +5% (최대 +50%)"
-                : "완전체 \(collection.complete)마리 · 지금 펫 스탯 +\(percent)%\(capNote)",
-            control: nil, dimmed: true))
+        // 지금 펫이 완전체면 자기는 세지 않으므로 "1마리 · +0%" 처럼 모순돼 보인다.
+        // 그때는 자기를 뺐다는 것을 문구로 밝힌다.
+        let subtitle: String
+        if collection.complete == 0 {
+            subtitle = "경험치를 끝까지 채운 펫 1마리당 다른 펫 스탯 +5% (최대 +50%)"
+        } else if collection.others < collection.complete {
+            subtitle = "완전체 \(collection.complete)마리 · 지금 펫은 자기 빼고 \(collection.others)마리분 +\(percent)%\(capNote)"
+        } else {
+            subtitle = "완전체 \(collection.complete)마리 · 지금 펫 스탯 +\(percent)%\(capNote)"
+        }
+        rows.append(RowSpec(title: "완전체 보너스", subtitle: subtitle, control: nil, dimmed: true))
 
         let peers = d.settingsBattlePeers
         guard !peers.isEmpty else {
