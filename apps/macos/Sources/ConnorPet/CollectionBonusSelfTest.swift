@@ -77,6 +77,18 @@ func runCollectionBonusSelfTest() -> Never {
           + " (파워 \(String(format: "%.2f", base)) → \(String(format: "%.2f", boosted)))")
     guard winsBoosted > winsBase else { fail("보너스를 받아도 승률이 오르지 않는다") }
 
+    // ── 마우스 오버 별 ──
+    guard CollectionBonus.stars(forCompleteCount: 0) == "" else { fail("완전체 0마리인데 별이 있다") }
+    guard CollectionBonus.stars(forCompleteCount: 1) == "⭐️" else { fail("1마리 → 별 하나여야 한다") }
+    guard CollectionBonus.stars(forCompleteCount: 3) == "⭐️⭐️⭐️" else { fail("3마리 → 별 셋이어야 한다") }
+    guard CollectionBonus.stars(forCompleteCount: 10) == String(repeating: "⭐️", count: 10) else {
+        fail("10마리까지는 하나씩 늘어놓아야 한다")
+    }
+    guard CollectionBonus.stars(forCompleteCount: 13) == "⭐️×13" else {
+        fail("10마리를 넘으면 ⭐️×N 으로 줄여야 한다: \(CollectionBonus.stars(forCompleteCount: 13))")
+    }
+    print("[selftest] 별: 0 → 없음 · 1 → ⭐️ · 3 → ⭐️⭐️⭐️ · 10 → 열 개 · 13 → ⭐️×13")
+
     print("SELFTEST PASS")
     exit(0)
 }

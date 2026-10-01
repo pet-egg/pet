@@ -1606,7 +1606,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // 종 이름은 보이는 쪽(진화형), 지어 준 이름은 기본형에 저장돼 있다.
         let species = Self.koreanPetName(displayedPetSlug)
         let name = PetNames.display(for: selectedPetSlug, fallback: species)
-        return "\(name)\n\(Self.xpDetail(tokens: tokens))"
+        // 완전체 한 마리당 별 하나(CollectionBonus.stars). 없으면 이름만.
+        let stars = CollectionBonus.stars(forCompleteCount: CollectionBonus.completeCount(in: petTokens))
+        let title = stars.isEmpty ? name : "\(name) \(stars)"
+        return "\(title)\n\(Self.xpDetail(tokens: tokens))"
     }
 
     private static func xpDetail(tokens: Double) -> String {

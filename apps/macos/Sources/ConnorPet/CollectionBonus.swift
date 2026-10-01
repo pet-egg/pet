@@ -31,6 +31,22 @@ enum CollectionBonus {
         min(cap, Double(max(0, count)) * perComplete)
     }
 
+    /// 마우스 오버 이름 뒤에 붙는 별. 완전체 한 마리당 ⭐️ 하나.
+    ///
+    /// 별은 **가진 완전체 전체**를 센다 — 보너스와 달리 자기 자신도 포함한다. 보너스는
+    /// "다른 펫에게 나눠 주는 것" 이라 자기를 빼지만, 별은 지금까지 몇 마리를 끝까지
+    /// 키웠는지 보여 주는 배지다.
+    ///
+    /// 10개를 넘으면 `⭐️×13` 으로 줄인다. 펫이 36종까지 있어 다 늘어놓으면 문구가 화면을
+    /// 가로지른다. 10 은 보너스 상한(+50%)과 같은 지점이다.
+    static func stars(forCompleteCount count: Int) -> String {
+        guard count > 0 else { return "" }
+        return count <= starLimit ? String(repeating: "⭐️", count: count) : "⭐️×\(count)"
+    }
+
+    /// 별을 하나씩 늘어놓는 최대 개수.
+    static let starLimit = 10
+
     /// 대전 파워에 보너스를 얹는다. 파워는 0...1 계약이라 1 을 넘지 않게 자른다.
     ///
     /// 파워 1.0 은 이미 갓 시작한 상대를 한 방에 눕히는 값이다. 그래서 다 자란 펫으로
