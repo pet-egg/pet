@@ -5,14 +5,14 @@
 
   - 오른쪽 끝이 입이다. 앱(FlameWindow)이 창의 오른쪽 가장자리를 입에 붙이고 왼쪽으로
     늘인다 — 펫이 왼쪽을 보고 있기 때문이다.
-  - 도트 크기를 불·물 이펙트와 맞춘다: 저해상도로 그린 뒤 4배 최근접 확대.
+  - 저해상도로 그린 뒤 4배 최근접 확대한다(불·물 이펙트와 같은 방식).
 
 다시 그리려면: python3 tooling/scripts/make_hyper_beam.py
 """
 from pathlib import Path
 from PIL import Image
 
-W, H, SCALE = 60, 20, 4          # 240 x 80 로 확대된다 (불·물 이펙트 폭 240 과 같다)
+W, H, SCALE = 120, 10, 4         # 480 x 40 — 가로세로비 12
 CY = H // 2                       # 광선 중심선
 
 OUTLINE = (176, 52, 12, 255)      # 바깥 테두리 — 도트 그림이 배경에서 떨어져 보이게
@@ -28,37 +28,37 @@ def put(x, y, c):
     if 0 <= x < W and 0 <= y < H:
         px[x, y] = c
 
-# 1) 광선 몸통 — 굵기가 일정하다. 끝(왼쪽 x<6)만 살짝 가늘어진다.
-#
-# 앱은 이 그림을 길이에 맞춰 **통째로** 늘린다(높이 = 길이 / 가로세로비). 그래서 그림을
-# 위아래로 넉넉히 잡으면 진화형(광선 길이 3.75배)에서 광선이 몸보다 굵어진다. 처음 26줄로
-# 그렸을 때 망나뇽 몸통보다 섬광이 컸다 — 20줄로 줄였다.
-for x in range(2, W - 4):
-    taper = 0 if x >= 6 else (6 - x) // 2
-    bands = [(4 - taper, OUTLINE), (3 - taper, ORANGE), (2 - taper, YELLOW), (1 - taper, CORE), (0, WHITE)]
+# 앱은 이 그림을 길이에 맞춰 **통째로** 늘린다(높이 = 길이 / 가로세로비). 굵기는 그림의
+# 가로세로비로만 정해진다. 불·물(3.0)과 같은 비로 그렸더니 망나뇽에서 광선 높이가 몸보다
+# 컸다(400 vs 240 프레임 px). 가로세로비 12 면 grow=1.0 에서 광선 높이가 몸의 약 1/4~2/5:
+#   미뇽 33/132 · 신뇽 63/195 · 망나뇽 100/240 (프레임 px, 섬광 포함 전체 높이)
+
+# 1) 광선 몸통 — 굵기가 일정하다. 끝(왼쪽 x<8)만 가늘어진다. 섬광보다 한 줄씩 얇다.
+for x in range(1, W - 5):
+    taper = 0 if x >= 8 else (8 - x) // 3
+    bands = [(3 - taper, OUTLINE), (2 - taper, ORANGE), (1 - taper, YELLOW), (0, WHITE if taper == 0 else YELLOW)]
     for half, c in bands:
         if half < 0:
             continue
         for dy in range(-half, half + 1):
             put(x, CY + dy, c)
 
-# 2) 입 쪽 섬광 — 모은 힘이 터지는 자리라 광선보다 조금 크다. 너무 크면 펫 얼굴보다
-#    섬광이 먼저 눈에 들어온다.
-fx = W - 4
-for r, c in [(6, OUTLINE), (5, ORANGE), (4, YELLOW), (3, CORE), (1, WHITE)]:
+# 2) 입 쪽 섬광 — 광선보다 조금 크다. **그림 안에 다 들어가야 한다**: 중심을 오른쪽 끝에서
+#    반지름+1 만큼 안쪽에 둔다. 예전에는 중심 W-4 · 반지름 6 이라 오른쪽이 잘려 평평한
+#    세로 단면이 남았다.
+R = 4
+fx = W - 1 - R
+for r, c in [(R, OUTLINE), (R - 1, ORANGE), (R - 2, YELLOW), (1, WHITE)]:
     for y in range(-r, r + 1):
         for x in range(-r, r + 1):
             if x * x + y * y <= r * r:
                 put(fx + x, CY + y, c)
-# 섬광의 십자 빛줄기
-for d in range(7, 9):
-    for c, off in [(YELLOW, 0)]:
-        put(fx, CY - d, c); put(fx, CY + d, c)
+assert all(px[W - 1, y][3] == 0 or abs(y - CY) == 0 for y in range(H)), "섬광이 오른쪽 변에 잘렸다"
 
 # 3) 광선 둘레의 불티 — 정적인 막대처럼 보이지 않게.
-for x, y, c in [(10, CY - 6, YELLOW), (17, CY + 6, ORANGE), (24, CY - 7, YELLOW),
-                (31, CY + 6, YELLOW), (38, CY - 6, ORANGE), (45, CY + 7, YELLOW),
-                (14, CY + 5, CORE), (34, CY - 5, CORE)]:
+for x, y, c in [(12, CY - 4, YELLOW), (26, CY + 4, ORANGE), (40, CY - 4, YELLOW),
+                (55, CY + 4, YELLOW), (70, CY - 4, ORANGE), (86, CY + 4, YELLOW),
+                (19, CY + 4, CORE), (62, CY - 4, CORE)]:
     put(x, y, c)
 
 out = Path(__file__).resolve().parents[2] / "assets" / "effects" / "hyper_beam.png"

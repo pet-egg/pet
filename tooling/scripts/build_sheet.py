@@ -125,9 +125,9 @@ SKILLS = {
     "blastoise":  {"row": "water-gun",   "effect": "water_jet.png", "mouth": (0.300, 0.400)},
     # 미뇽 계열 — 파괴광선. 입 위치는 서있기 줄의 스프라이트(전 프레임 합집합 상자)를
     # 확대해 5% 격자로 읽은 값이다. 잠듦 줄은 Zzz 가 합성돼 상자가 커지므로 쓰지 않는다.
-    "dratini":    {"row": "hyper-beam",  "effect": "hyper_beam.png", "mouth": (0.320, 0.270)},
-    "dragonair":  {"row": "hyper-beam",  "effect": "hyper_beam.png", "mouth": (0.360, 0.300)},
-    "dragonite":  {"row": "hyper-beam",  "effect": "hyper_beam.png", "mouth": (0.170, 0.260)},
+    "dratini":    {"row": "hyper-beam",  "effect": "hyper_beam.png", "mouth": (0.303, 0.431)},
+    "dragonair":  {"row": "hyper-beam",  "effect": "hyper_beam.png", "mouth": (0.411, 0.388)},
+    "dragonite":  {"row": "hyper-beam",  "effect": "hyper_beam.png", "mouth": (0.179, 0.293)},
 }
 EXTRA_ROWS = {slug: [cfg["row"]] for slug, cfg in SKILLS.items()}
 
