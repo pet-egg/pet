@@ -22,7 +22,7 @@
     "defaultAnimation": {"type": "string", "description": "요청한 애니메이션이 없을 때 폴백"},
     "animations": {
       "type": "object",
-      "description": "이름→정의. 상태 표시에 쓰는 이름: idle/running/waiting/review/failed. 그 외 jumping/waving/running-left/running-right, 속성기 fire-breath/water-gun.",
+      "description": "이름→정의. 상태 표시에 쓰는 이름: idle/running/waiting/review/failed. 그 외 jumping/waving/running-left/running-right, 속성기 fire-breath/water-gun/hyper-beam.",
       "additionalProperties": {
         "type": "object",
         "required": ["row", "frames"],
@@ -41,7 +41,7 @@
       "type": "object",
       "description": "속성기가 있는 펫만. 이펙트 이미지와 프레임별 입 위치/스케일.",
       "properties": {
-        "row": {"type": "string", "description": "속성기 애니메이션 이름 (예: fire-breath)"},
+        "row": {"type": "string", "description": "속성기 애니메이션 이름 (fire-breath · water-gun · hyper-beam)"},
         "effect": {"type": "string", "description": "assets/effects/ 의 이펙트 파일명"},
         "mouthByFrame": {
           "type": "array",
