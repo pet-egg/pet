@@ -62,6 +62,11 @@ if ProcessInfo.processInfo.environment["CONNORPET_SELFTEST"] == "quest" {
     runQuestSelfTest()
 }
 
+// 펫 우클릭 메뉴에 대전·노려보기가 들어가는지: `CONNORPET_SELFTEST=contextmenu swift run`.
+if ProcessInfo.processInfo.environment["CONNORPET_SELFTEST"] == "contextmenu" {
+    runContextMenuSelfTest()
+}
+
 // 지시한 모션이 시간이 지나면 스스로 풀리는지: `CONNORPET_SELFTEST=pin swift run`.
 if ProcessInfo.processInfo.environment["CONNORPET_SELFTEST"] == "pin" {
     runPinReleaseSelfTest()

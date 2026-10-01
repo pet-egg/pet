@@ -85,6 +85,10 @@ final class PetView: NSView {
     var onOpenSettings: (() -> Void)?
     /// 우클릭 메뉴의 "방해금지 모드"를 눌렀을 때. 실제 토글·저장·광고는 AppDelegate 몫.
     var onToggleDND: (() -> Void)?
+    /// 우클릭 메뉴에 넣을 **대전·노려보기** 항목. 상대 목록(같은 Wi-Fi 의 펫)과
+    /// 신청·노려보기 동작은 AppDelegate 가 갖고 있으므로, 메뉴바와 같은 항목을 그쪽이
+    /// 만들어 넘긴다. 메뉴를 열 때마다 불러 그 순간의 상대 목록을 쓴다.
+    var onBuildSocialMenuItems: (() -> [NSMenuItem])?
     /// 방해금지 모드가 켜져 있는지. 우클릭 메뉴 체크 표시에 쓴다 — AppDelegate 가
     /// 값을 바꿀 때마다 여기에 반영한다.
     var dndEnabled = false
@@ -295,6 +299,11 @@ final class PetView: NSView {
     // MARK: - Right-click motion menu
 
     override func rightMouseDown(with event: NSEvent) {
+        NSMenu.popUpContextMenu(makeContextMenu(), with: event, for: self)
+    }
+
+    /// 우클릭 메뉴. 셀프테스트가 띄우지 않고 구성만 검사할 수 있게 따로 뺐다.
+    func makeContextMenu() -> NSMenu {
         let menu = NSMenu()
         // 기본값(true)이면 AppKit 이 target/action 존재 여부만 보고 활성화를 다시
         // 판단해서, 우리가 준 isEnabled 를 덮어쓴다. 그러면 이 펫에 없는 모션도
@@ -340,9 +349,13 @@ final class PetView: NSView {
             menu.addItem(item)
         }
 
-        // 설정과 종료를 맨 아래 한 묶음으로. 메뉴바 아이콘이 가려 접근 못 하는
-        // 사용자를 위해, 메뉴바에 있던 기능을 모은 설정 창을 여기서도 연다.
+        // 대전·노려보기. 예전에는 메뉴바 아이콘에만 있어서, 펫이 눈앞에 있는데도
+        // 메뉴바까지 올라가 상대를 골라야 했다. 방해금지 토글과 한 묶음으로 둔다 —
+        // 셋 다 "같은 Wi-Fi 의 다른 펫"과 주고받는 기능이다.
         menu.addItem(.separator())
+        for item in onBuildSocialMenuItems?() ?? [] {
+            menu.addItem(item)
+        }
 
         // 방해금지 모드: 켜면 같은 Wi-Fi 상대가 거는 대전·노려보기를 받지 않는다.
         // 메뉴바·설정창과 같은 토글이라 어디서 켜든 상태가 일치한다.
@@ -352,6 +365,10 @@ final class PetView: NSView {
         dnd.toolTip = "켜면 다른 사람이 대전·노려보기를 걸 수 없어요. 상대 목록엔 '방해금지 중'으로 보입니다."
         dnd.isEnabled = true
         menu.addItem(dnd)
+
+        // 설정과 종료를 맨 아래 한 묶음으로. 메뉴바 아이콘이 가려 접근 못 하는
+        // 사용자를 위해, 메뉴바에 있던 기능을 모은 설정 창을 여기서도 연다.
+        menu.addItem(.separator())
 
         let settings = NSMenuItem(title: "설정…", action: #selector(openSettings(_:)), keyEquivalent: ",")
         settings.keyEquivalentModifierMask = [.command]
@@ -368,8 +385,7 @@ final class PetView: NSView {
         quit.target = NSApp
         quit.isEnabled = true
         menu.addItem(quit)
-
-        NSMenu.popUpContextMenu(menu, with: event, for: self)
+        return menu
     }
 
     /// 좌클릭과 같은 동작 — 브리핑을 말한다. 좌클릭이 펫을 맞춰야 하는 반면
