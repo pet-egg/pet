@@ -63,3 +63,15 @@ mac 앱(Swift, `apps/macos`)과 windows 앱(Python, `apps/windows`)은 **코드�
 `eevee→vaporeon`, `diglett→dugtrio`, `pikachu→raichu`,
 `larvitar→pupitar→tyranitar`, `dratini→dragonair→dragonite`.
 `ditto`/`togepi`/`snorlax`/`gengar`/`bichon` 은 진화 없음.
+
+## 성별 (gender)
+- **부화(처음 키우기 시작) 시 확률로 한 번만** 정하고, 그 뒤로는 바뀌지 않는다.
+  경험치와 **완전히 별도 저장**이라 업데이트해도 경험치는 유지되고 성별만 새로 배정된다.
+- **기본형 slug 기준으로 저장**(진화해도 같은 성별 — 이름과 같은 규칙).
+- 암컷 확률은 포켓몬 본가 성비(PokeAPI `gender_rate`, 8분위). `-1` = 무성:
+  - **1/8 암컷**(♂ 87.5%): `totodile` `charmander` `squirtle` `eevee` `chikorita`
+    `torchic` `togepi` `tepig` `snorlax`
+  - **4/8(50:50)**: `geodude` `gengar` `diglett` `pikachu` `larvitar` `dratini` · `bichon`(비포켓몬, 50:50로 둠)
+  - **무성**: `ditto` (기호 없음)
+- 표시: 이름 **오른쪽**에 수컷 `♂`(파랑) / 암컷 `♀`(분홍), 무성은 기호 없음.
+  맥은 호버 이름표(이름 줄)에 붙이고, 윈도우는 이름 표시가 없어 펫 오른쪽 위에 기호만 띄운다.

@@ -22,6 +22,11 @@ if ProcessInfo.processInfo.environment["CONNORPET_SELFTEST"] == "petname" {
     runPetNameSelfTest()
 }
 
+// 성별 배정·저장·고정 규칙: `CONNORPET_SELFTEST=gender swift run`.
+if ProcessInfo.processInfo.environment["CONNORPET_SELFTEST"] == "gender" {
+    runPetGenderSelfTest()
+}
+
 // 실행 방식이 바뀌었을 때 경험치 이관: `CONNORPET_SELFTEST=migration swift run`.
 if ProcessInfo.processInfo.environment["CONNORPET_SELFTEST"] == "migration" {
     runMigrationSelfTest()

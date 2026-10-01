@@ -10,7 +10,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from pet_win import animation as anim  # noqa: E402
-from pet_win import petmeta, xpmodel   # noqa: E402
+from pet_win import petgender, petmeta, xpmodel   # noqa: E402
 from pet_win.tokenusage import TranscriptTokenReader  # noqa: E402
 
 
@@ -147,6 +147,31 @@ def test_token_accrual_first_sight_zero(tmp_path):
     time.sleep(0.01)
     _write_jsonl(p, [(100, 50, 10, 0), (200, 100, 0, 0)])
     assert r.accrued(e) == 300
+
+
+# ── 성별(gender) ──────────────────────────────────────────────
+def test_gender_ditto_is_genderless():
+    # 메타몽은 난수가 뭐든 무성, 기호 없음.
+    for r in range(8):
+        assert petgender.roll("ditto", rng=lambda r=r: r) == petgender.GENDERLESS
+    assert petgender.symbol(petgender.GENDERLESS) is None
+
+
+def test_gender_probability_boundary():
+    # 1/8 종: rng<1 일 때만 암컷.
+    assert petgender.roll("charmander", rng=lambda: 0) == petgender.FEMALE
+    assert petgender.roll("charmander", rng=lambda: 1) == petgender.MALE
+    # 4/8 종: rng<4 면 암컷.
+    assert petgender.roll("pikachu", rng=lambda: 3) == petgender.FEMALE
+    assert petgender.roll("pikachu", rng=lambda: 4) == petgender.MALE
+
+
+def test_gender_symbols_and_rates_cover_roster():
+    # 로스터 전체가 성비 표에 있어야 한다(모르는 펫 fallback 에 기대지 않게).
+    for slug in petmeta.AVAILABLE_PET_SLUGS:
+        assert slug in petgender.FEMALE_RATE_BY_BASE, slug
+    assert petgender.symbol(petgender.MALE) == "♂"
+    assert petgender.symbol(petgender.FEMALE) == "♀"
 
 
 if __name__ == "__main__":

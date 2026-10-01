@@ -18,6 +18,7 @@ from PySide6.QtGui import (QAction, QActionGroup, QColor, QCursor, QIcon,
 from PySide6.QtWidgets import (QApplication, QMenu, QSystemTrayIcon, QWidget)
 
 from . import animation as anim
+from . import petgender
 from . import petmeta
 from . import resources
 from . import xpmodel
@@ -56,6 +57,8 @@ class PetWindow(QWidget):
             "evolutionEnabled", False, type=bool)
         self.bar_always = self.settings.value("barAlwaysVisible", False, type=bool)
         self.pet_tokens = self._load_tokens()
+        self.genders = self._load_genders()
+        self._resolve_gender(self.base_slug)  # 부화: 첫 표시 시 확률로 한 번 배정
 
         self.watcher = ClaudeCodeStatusWatcher()
         self.sheet_cache = {}
@@ -103,6 +106,32 @@ class PetWindow(QWidget):
             self.settings.setValue(slug, float(val))
         self.settings.endGroup()
         self.settings.sync()
+
+    # ── 성별 지속성 ────────────────────────────────────────────
+    def _load_genders(self):
+        out = {}
+        self.settings.beginGroup("petGenders")
+        for key in self.settings.childKeys():
+            val = self.settings.value(key)
+            if val:
+                out[key] = str(val)
+        self.settings.endGroup()
+        return out
+
+    def _resolve_gender(self, base):
+        """이미 배정됐으면 그대로, 아니면 확률로 뽑아 저장(부화 시 한 번만)."""
+        if base in self.genders:
+            return self.genders[base]
+        g = petgender.roll(base)
+        self.genders[base] = g
+        self.settings.beginGroup("petGenders")
+        self.settings.setValue(base, g)
+        self.settings.endGroup()
+        self.settings.sync()
+        return g
+
+    def _current_gender(self):
+        return self.genders.get(self.base_slug, petgender.GENDERLESS)
 
     # ── 스프라이트 로딩 ─────────────────────────────────────────
     def _cached_sheet(self, slug):
@@ -188,9 +217,36 @@ class PetWindow(QWidget):
                                Qt.SmoothTransformation)
             p.drawPixmap(PAD, PAD, scaled)
 
+        self._draw_gender(p)
         if self.bar_always or self._hovering:
             self._draw_xp_bar(p)
         p.end()
+
+    def _draw_gender(self, p):
+        """성별 기호를 펫 오른쪽 위에. 맥은 이름 옆에 붙지만 윈도우는 이름 표시가
+        없어, 전투 화면처럼 수컷 ♂(파랑)/암컷 ♀(분홍)만 작게 띄운다. 무성은 생략."""
+        if not self.sheet:
+            return
+        sym = petgender.symbol(self._current_gender())
+        if not sym:
+            return
+        from PySide6.QtGui import QFont
+        rgb = petgender.COLOR_RGB.get(self._current_gender())
+        if not rgb:
+            return
+        font = QFont()
+        font.setPointSize(11)
+        font.setBold(True)
+        p.setFont(font)
+        tw = int(self.sheet.frame_w * SCALE)
+        x = PAD + tw - 16
+        y = PAD + 14
+        # 검은 외곽선(밝은 배경에서도 읽히게) 뒤 색 글자.
+        p.setPen(QColor(0, 0, 0, 200))
+        for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+            p.drawText(x + dx, y + dy, sym)
+        p.setPen(QColor(*rgb))
+        p.drawText(x, y, sym)
 
     def _draw_xp_bar(self, p):
         prog = xpmodel.progress(self.pet_tokens.get(self.base_slug, 0.0))
@@ -289,6 +345,7 @@ class PetWindow(QWidget):
     def change_pet(self, slug):
         self.base_slug = slug
         self.settings.setValue("selectedPetSlug", slug)
+        self._resolve_gender(slug)  # 새로 고른 펫도 부화 시 성별 배정
         self._load_display_pet()
 
     def toggle_evolution(self, checked):

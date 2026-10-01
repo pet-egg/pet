@@ -1632,9 +1632,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // 종 이름은 보이는 쪽(진화형), 지어 준 이름은 기본형에 저장돼 있다.
         let species = Self.koreanPetName(displayedPetSlug)
         let name = PetNames.display(for: selectedPetSlug, fallback: species)
-        // 완전체 한 마리당 별 하나(CollectionBonus.stars). 없으면 이름만.
+        // 성별 기호(수컷 ♂ / 암컷 ♀)를 이름 바로 오른쪽에. 부화 시 확률로 한 번만
+        // 정해지고(처음 resolve 되는 순간) 그 뒤로는 고정이다. 무성(메타몽)은 기호 없음.
+        // 색칠은 XPDetailWindow 가 기호를 보고 한다.
+        let gender = PetGenders.resolve(for: selectedPetSlug)
+        let named = gender.symbol.map { "\(name) \($0)" } ?? name
+        // 완전체 한 마리당 별 하나(CollectionBonus.stars). 없으면 이름(+성별)만.
         let stars = CollectionBonus.stars(forCompleteCount: CollectionBonus.completeCount(in: petTokens))
-        let title = stars.isEmpty ? name : "\(name) \(stars)"
+        let title = stars.isEmpty ? named : "\(named) \(stars)"
         return "\(title)\n\(Self.xpDetail(tokens: tokens))"
     }
 
