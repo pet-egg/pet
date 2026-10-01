@@ -339,6 +339,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         view.onOpenSettings = { [weak self] in self?.openSettingsWindow() }
         view.onToggleDND = { [weak self] in self?.toggleDND() }
+        // 우클릭 메뉴에서도 대전 신청·노려보기. 메뉴바와 같은 항목을 그대로 쓴다.
+        view.onBuildSocialMenuItems = { [weak self] in
+            guard let self else { return [] }
+            return [self.makeBattleMenuItem(), self.makeStareMenuItem()]
+        }
         view.onHoverChanged = { [weak self] on in
             self?.xpHovering = on
             self?.updateXPDetailWindow()
@@ -364,6 +369,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         startBattleService()
         startQuestService()
+
+        // 디버그 전용: 펫 우클릭 메뉴의 실제 구성을 출력하고 종료한다 —
+        // CONNORPET_DEBUG_CONTEXTMENU=1. 상대 목록은 발견에 몇 초 걸리므로 기다렸다 찍는다.
+        if ProcessInfo.processInfo.environment["CONNORPET_DEBUG_CONTEXTMENU"] != nil {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
+                guard let menu = self?.petView?.makeContextMenu() else {
+                    print("[contextmenu] 펫 창이 없다"); NSApp.terminate(nil); return
+                }
+                for item in menu.items {
+                    if item.isSeparatorItem { print("[contextmenu] ───"); continue }
+                    print("[contextmenu] \(item.title)\(item.isEnabled ? "" : " (잠김)")")
+                    for sub in item.submenu?.items ?? [] {
+                        print("[contextmenu]     \(sub.title)\(sub.isEnabled ? "" : " (잠김)")")
+                    }
+                }
+                NSApp.terminate(nil)
+            }
+        }
 
         // 디버그 전용: 설정창 레이아웃을 PNG 로 떠서 확인하고 곧장 종료한다.
         if let path = ProcessInfo.processInfo.environment["CONNORPET_DEBUG_SETTINGS"] {
