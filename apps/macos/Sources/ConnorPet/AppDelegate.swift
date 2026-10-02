@@ -1768,6 +1768,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         petView?.setSpriteSheet(sheet)
         loadSkillEffect(for: sheet)
+
+        // 라벨·호버 문구 첫 줄(종 이름)은 `displayedPetSlug` 에 의존하는데, 그 값은
+        // 방금 이 함수가 바꿨다. `applyStage()` 는 이 함수보다 **먼저** 돌며 아직 옛
+        // 표시형으로 라벨을 그리므로(펫 교체·진화 모두 그 순서다), 여기서 다시 그려야
+        // 스프라이트는 새 펫인데 이름만 이전 펫으로 남는 어긋남을 막는다.
+        petView?.setProgress(percent: currentPercent, stage: currentStage,
+                             detail: hoverDetail(tokens: petTokens[selectedPetSlug] ?? 0))
+        updateXPDetailWindow()
+
         if ProcessInfo.processInfo.environment["CONNORPET_DEBUG"] != nil {
             let t = Int(petTokens[selectedPetSlug] ?? 0)
             let ww = Int(self.window?.frame.width ?? 0)
