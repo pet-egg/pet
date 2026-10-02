@@ -22,6 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var flame: FlameWindow?
     private var confetti: ConfettiWindow?
     private var celebrationGuests: CelebrationGuestsWindow?
+    private var effectOffBubble: EffectOffBubbleWindow?
     private var xpDetailWindow: XPDetailWindow?
     private var xpHovering = false
     private var flameAspect: CGFloat = 1.47
@@ -378,6 +379,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         bubble = SpeechBubbleWindow()
         confetti = ConfettiWindow()
         celebrationGuests = CelebrationGuestsWindow()
+        effectOffBubble = EffectOffBubbleWindow()
         xpDetailWindow = XPDetailWindow()
         challengeBubble = ChallengeBubbleWindow()
         challengeCountdown = ChallengeCountdownWindow()
@@ -661,6 +663,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         for i in 0..<count {
             petView?.enqueueCelebration(phrases[i % phrases.count], style: .reward)
         }
+
+        // 30초를 다 기다리지 않고 바로 끌 수 있는 작은 말풍선. 색종이가 다 떨어질
+        // 때까지(= duration + 여유) 떠 있다가, 누르거나 시간이 지나면 사라진다.
+        if let petFrame = window?.frame {
+            effectOffBubble?.onClick = { [weak self] in self?.stopWeddingCelebration() }
+            effectOffBubble?.show(above: petFrame, duration: duration + ConfettiWindow.tailDuration)
+        }
+    }
+
+    /// 돌고 있는 결혼식 축하를 즉시 끈다 — "이펙트 끄기" 말풍선이 부른다.
+    private func stopWeddingCelebration() {
+        confetti?.hide()
+        celebrationGuests?.hide()
+        petView?.cancelCelebrations()
+        effectOffBubble?.hide()
     }
 
     // Test hook: when CONNORPET_BATTLE_AUTOCHALLENGE is set, challenge the first

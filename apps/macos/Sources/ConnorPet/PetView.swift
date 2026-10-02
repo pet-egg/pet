@@ -239,6 +239,16 @@ final class PetView: NSView {
         drainCelebrations()
     }
 
+    /// 줄 서 있는 축하를 전부 비우고, 지금 떠 있는 축하 말풍선도 바로 닫는다.
+    /// "이펙트 끄기" 말풍선이 부른다. 큐를 먼저 비워 `stopSpeaking` 이 뒤에 거는
+    /// 재개(drain)가 아무 일도 하지 않게 한다.
+    func cancelCelebrations() {
+        celebrationQueue.removeAll()
+        celebrationWork?.cancel()
+        celebrationWork = nil
+        if speaking { stopSpeaking() }
+    }
+
     /// 줄에서 하나를 꺼내 띄운다.
     ///
     /// 무언가를 이미 말하는 중이면 아무것도 하지 않고 돌아간다. 그 말이 끝날 때
