@@ -85,6 +85,8 @@ final class PetView: NSView {
     var onOpenSettings: (() -> Void)?
     /// 우클릭 메뉴의 "방해금지 모드"를 눌렀을 때. 실제 토글·저장·광고는 AppDelegate 몫.
     var onToggleDND: (() -> Void)?
+    /// 우클릭 메뉴의 "결혼식 축하"를 눌렀을 때. 빵빠레 이펙트·축하 말풍선은 AppDelegate 몫.
+    var onWeddingCelebration: (() -> Void)?
     /// 우클릭 메뉴에 넣을 **대전·노려보기** 항목. 상대 목록(같은 Wi-Fi 의 펫)과
     /// 신청·노려보기 동작은 AppDelegate 가 갖고 있으므로, 메뉴바와 같은 항목을 그쪽이
     /// 만들어 넘긴다. 메뉴를 열 때마다 불러 그 순간의 상대 목록을 쓴다.
@@ -366,6 +368,14 @@ final class PetView: NSView {
         dnd.isEnabled = true
         menu.addItem(dnd)
 
+        // 결혼식 축하: 빵빠레(색종이) 이펙트 + 축하 말풍선을 터뜨린다. 재미용 한 방.
+        menu.addItem(.separator())
+        let wedding = NSMenuItem(title: "결혼식 축하에 참여하기 🎉", action: #selector(weddingCelebration(_:)), keyEquivalent: "")
+        wedding.target = self
+        wedding.toolTip = "빵빠레와 축하 인사를 띄우고, 같은 Wi-Fi 의 모든 펫 화면에서도 함께 터집니다."
+        wedding.isEnabled = true
+        menu.addItem(wedding)
+
         // 설정과 종료를 맨 아래 한 묶음으로. 메뉴바 아이콘이 가려 접근 못 하는
         // 사용자를 위해, 메뉴바에 있던 기능을 모은 설정 창을 여기서도 연다.
         menu.addItem(.separator())
@@ -400,6 +410,10 @@ final class PetView: NSView {
 
     @objc private func toggleDND(_ sender: NSMenuItem) {
         onToggleDND?()
+    }
+
+    @objc private func weddingCelebration(_ sender: NSMenuItem) {
+        onWeddingCelebration?()
     }
 
     @objc private func openSettings(_ sender: NSMenuItem) {

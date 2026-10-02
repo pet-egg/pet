@@ -59,13 +59,18 @@ func runContextMenuSelfTest() -> Never {
     guard titles[battle - 1] == "---", stare == battle + 1, dnd == stare + 1 else {
         fail("구분선 | 대전 | 노려보기 | 방해금지 순서가 아니다")
     }
-    guard titles[settings - 1] == "---", settings == dnd + 2 else { fail("방해금지와 설정 사이 구분선이 없다") }
+    // 방해금지 → 구분선 → 결혼식 축하 → 구분선 → 설정 순서다.
+    guard let wedding = titles.firstIndex(of: "결혼식 축하에 참여하기 🎉") else {
+        fail("결혼식 축하 항목이 빠졌다: \(titles)")
+    }
+    guard titles[wedding - 1] == "---", wedding == dnd + 2 else { fail("방해금지와 결혼식 축하 사이 구분선이 없다") }
+    guard titles[settings - 1] == "---", settings == wedding + 2 else { fail("결혼식 축하와 설정 사이 구분선이 없다") }
     // 모션 묶음이 그 위에 그대로 있어야 한다.
     guard titles.firstIndex(of: "자동 (에이전트 상태 따르기)").map({ $0 < battle }) == true else {
         fail("모션 목록이 대전 위에 있지 않다")
     }
     guard menu.items[battle].isEnabled, menu.items[stare].isEnabled else { fail("대전·노려보기가 잠겨 있다") }
-    print("[selftest] 위치: 모션 목록 → 구분선 → 대전 · 노려보기 · 방해금지 → 구분선 → 설정 · 나가")
+    print("[selftest] 위치: 모션 목록 → 구분선 → 대전 · 노려보기 · 방해금지 → 구분선 → 결혼식 축하 → 구분선 → 설정 · 나가")
 
     // 3) 하위 항목을 누르면 신청·노려보기 동작이 실제로 불린다.
     for i in [battle, stare] {
