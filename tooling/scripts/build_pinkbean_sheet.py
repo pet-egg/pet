@@ -9,14 +9,14 @@
 을 만든다. (mac 미러·Orca 번들은 `sync_assets.py` 가 정본에서 생성한다.)
 
 소스 모션(GMS 230):
-  - 8820001 (핑크빈 펫 폼): move / skill1 / stand / skill3 / attack1 / die1
-  - 8820000 (핑크빈, 이모트 보유): skill6 (파란 베개에 누워 Zzz 자는 수면)
+  - 8820001 (핑크빈 펫 폼): move / skill2 / skill3 / attack1 / die1
+  - 8820000 (핑크빈, 이모트 보유): skill6 (파란 베개 Zzz 수면) / skill5 (RC 자동차 조작)
 
 상태 → pet.json 애니메이션 행(다른 펫과 같은 9행 포맷):
-  idle          ← 8820000 skill6 수면 프레임 (흑백으로 구움)   — 잠듦 Zzz
+  idle          ← 8820000 skill6 수면 구간만 (먹는 앞부분 제외, 흑백)  — 잠듦 Zzz
   running(±)    ← 8820001 move                                 — 작업 중
-  waiting       ← 8820001 skill1 (금빛 마법진)                  — 얼음/대기
-  review        ← 8820001 stand                                — 완료(하트)
+  waiting       ← 8820001 skill2 (파란 정령 소환)               — 얼음/대기
+  review        ← 8820000 skill5 자동차(RC카) 조작 구간 (앞부분 제외)   — 완료/검토
   jumping       ← 8820001 skill3 (초록 해골 구슬)               — 마우스 호버
   waving        ← 8820001 attack1                              — 말하기
   failed        ← 8820001 die1 (어둠 고치 변신)                — 실패
@@ -118,8 +118,8 @@ def main():
         ("running",       8820001, "move",    list(R(0, 8)),    dict(),              95),
         ("running-right", 8820001, "move",    list(R(0, 8)),    dict(),              95),
         ("running-left",  8820001, "move",    list(R(0, 8)),    dict(flip=True),     95),
-        ("waiting",       8820001, "skill1",  list(R(0, 16)),   dict(),              110),
-        ("review",        8820001, "stand",   list(R(0, 6)),    dict(),              180),
+        ("waiting",       8820001, "skill2",  list(R(0, 18)),   dict(),              95),
+        ("review",        8820000, "skill5",  list(R(58, 84)),  dict(ref=70),        130),
         ("jumping",       8820001, "skill3",  list(R(2, 14)),   dict(),              80),
         ("waving",        8820001, "attack1", list(R(0, 27, 2)), dict(),             90),
         ("failed",        8820001, "die1",    list(R(0, 58, 3)), dict(perframe=True), 110),
@@ -143,7 +143,7 @@ def main():
         "id": "pinkbean-pinkbean",
         "displayName": "핑크빈 (Pink Bean)",
         "description": ("MapleStory Pink Bean (핑크빈) desktop pet. idle=흑백 Zzz 수면, running=걷기, "
-                        "waiting=금빛 마법진, review=기본자세, hover(jumping)=초록 해골, failed=어둠 변신. "
+                        "waiting=파란 정령 소환, review=RC 자동차 조작, hover(jumping)=초록 해골, failed=어둠 변신. "
                         "Sprites extracted from MapleStory client via maplestory.io "
                         "(mob 8820000/8820001, GMS 230) — © Nexon."),
         "spritesheetPath": "spritesheet.png",
