@@ -400,14 +400,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let flag = ProcessInfo.processInfo.environment["CONNORPET_DEBUG_WEDDING"] {
             let fakeGuests = flag.split(separator: ",").map(String.init).filter { !$0.isEmpty }
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
-                guard let self, let petFrame = self.window?.frame else { return }
-                self.confetti?.celebrate(around: petFrame)
-                if !fakeGuests.isEmpty {
-                    self.celebrationGuests?.welcome(slugs: fakeGuests, around: petFrame)
-                }
-                self.petView?.enqueueCelebration(fakeGuests.isEmpty ? "빈스의 결혼을 축하드립니다."
-                                                                    : "다 함께\n빈스의 결혼을 축하드립니다.",
-                                                 style: .reward)
+                self?.runWeddingCelebration(guestSlugs: fakeGuests)
             }
         }
 
@@ -638,6 +631,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         battleService = service
     }
 
+    /// 결혼식 축하가 유지되는 시간(초). 빵빠레·손님 펫·말풍선이 이 동안 이어진다.
+    static let weddingCelebrationDuration: TimeInterval = 30
+
     /// 결혼식 축하에 참여한다("참여하기"). 내 화면에서만 일어나는 일이다 —
     /// 남의 화면에는 아무것도 띄우지 않는다.
     ///
@@ -645,16 +641,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// 내 펫 주위로 불러와 **여러 마리가 함께** 빵빠레를 터뜨린다. 방해금지 중인
     /// 상대는 부르지 않는다(참여 의사가 없다고 본다).
     private func joinWeddingCelebration() {
-        guard let petFrame = window?.frame else { return }
-        confetti?.celebrate(around: petFrame)
-
         let guestSlugs = battlePeers.filter { !$0.dnd }.map { $0.pet }
-        celebrationGuests?.welcome(slugs: guestSlugs, around: petFrame)
+        runWeddingCelebration(guestSlugs: guestSlugs)
+    }
 
-        let line = guestSlugs.isEmpty
-            ? "빈스의 결혼을 축하드립니다."
-            : "다 함께\n빈스의 결혼을 축하드립니다."
-        petView?.enqueueCelebration(line, style: .reward)
+    /// 실제로 축하를 재생한다. 메뉴("참여하기")와 디버그 트리거가 공유하는 경로다.
+    private func runWeddingCelebration(guestSlugs: [String]) {
+        guard let petFrame = window?.frame else { return }
+        let duration = Self.weddingCelebrationDuration
+        confetti?.celebrate(around: petFrame, duration: duration)
+        celebrationGuests?.welcome(slugs: guestSlugs, around: petFrame, duration: duration)
+
+        // 축하 문구 두 개를 번갈아 줄 세워, 30초 동안 말풍선이 끊기지 않게 채운다.
+        let phrases = guestSlugs.isEmpty
+            ? ["빈스의 결혼을 축하드립니다.", "빈스의 결혼을 축하합니다"]
+            : ["다 함께\n빈스의 결혼을 축하드립니다.", "빈스의 결혼을 축하합니다"]
+        let cycle = PetView.celebrationDuration + PetView.celebrationGap
+        let count = max(phrases.count, Int((duration / cycle).rounded(.up)))
+        for i in 0..<count {
+            petView?.enqueueCelebration(phrases[i % phrases.count], style: .reward)
+        }
     }
 
     // Test hook: when CONNORPET_BATTLE_AUTOCHALLENGE is set, challenge the first

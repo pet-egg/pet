@@ -11,9 +11,8 @@ final class ConfettiWindow: NSWindow {
     private var stopWork: DispatchWorkItem?
     private var hideWork: DispatchWorkItem?
 
-    /// 분사 지속 시간(초). 이후엔 새 조각을 안 만들고, 남은 조각이 떨어질
-    /// 시간을 더 준 뒤 창을 닫는다.
-    static let burstDuration: TimeInterval = 2.2
+    /// 기본 분사 지속 시간(초). 호출부가 따로 안 주면 이 값으로 쏟아진다.
+    static let defaultDuration: TimeInterval = 5
     /// 분사를 멈춘 뒤 남은 색종이가 바닥까지 떨어지도록 기다리는 시간(초).
     static let tailDuration: TimeInterval = 3.0
 
@@ -39,8 +38,9 @@ final class ConfettiWindow: NSWindow {
     override var canBecomeMain: Bool { false }
 
     /// 빵빠레를 터뜨린다. `petFrame` 주변에서 한 번 크게 터지고, 화면 위에서
-    /// 색종이가 쏟아진다.
-    func celebrate(around petFrame: NSRect) {
+    /// `duration` 초 동안 색종이가 계속 쏟아진 뒤, 남은 조각이 떨어질 시간을 더
+    /// 주고 사라진다.
+    func celebrate(around petFrame: NSRect, duration: TimeInterval = defaultDuration) {
         let screen = NSScreen.screens.first { $0.frame.intersects(petFrame) }
             ?? NSScreen.main
         guard let screenFrame = screen?.frame else { return }
@@ -63,8 +63,8 @@ final class ConfettiWindow: NSWindow {
         let hide = DispatchWorkItem { [weak self] in self?.hide() }
         stopWork = stop
         hideWork = hide
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.burstDuration, execute: stop)
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.burstDuration + Self.tailDuration, execute: hide)
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration, execute: stop)
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration + Self.tailDuration, execute: hide)
     }
 
     func hide() {

@@ -12,8 +12,8 @@ import AppKit
 final class CelebrationGuestsWindow: NSWindow {
     /// 한 번 참여에 보여 줄 손님 펫 수 상한. 너무 많으면 화면을 가린다.
     static let maxGuests = 8
-    /// 손님들이 머무는 시간(초). 빵빠레(약 5.2초)와 대략 맞춘다.
-    static let visibleDuration: TimeInterval = 5.2
+    /// 기본으로 손님들이 머무는 시간(초). 호출부가 따로 안 주면 이 값을 쓴다.
+    static let defaultDuration: TimeInterval = 5
     private static let fadeDuration: TimeInterval = 0.6
 
     private var guests: [CelebrationGuest] = []
@@ -45,7 +45,8 @@ final class CelebrationGuestsWindow: NSWindow {
     /// - Parameters:
     ///   - slugs: 참여하는 다른 사람들의 펫 slug. 빈 배열이면 아무것도 안 한다.
     ///   - petFrame: 내 펫 창의 화면 좌표.
-    func welcome(slugs: [String], around petFrame: NSRect) {
+    ///   - duration: 손님들이 머무는 시간(초).
+    func welcome(slugs: [String], around petFrame: NSRect, duration: TimeInterval = defaultDuration) {
         let slugs = Array(slugs.prefix(Self.maxGuests))
         guard !slugs.isEmpty else { return }
 
@@ -89,7 +90,7 @@ final class CelebrationGuestsWindow: NSWindow {
 
         let hide = DispatchWorkItem { [weak self] in self?.fadeOut() }
         hideWork = hide
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.visibleDuration, execute: hide)
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration, execute: hide)
     }
 
     private func fadeOut() {
