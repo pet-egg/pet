@@ -455,6 +455,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
 
+        // 실제 PetView(스프라이트 + 경험치 눈금)를 진화 단계별로 PNG 로 떠서 확인한다:
+        // CONNORPET_DEBUG_PETBAR=<접두사> CONNORPET_PET=<기본형> swift run.
+        // 라이브 앱과 **같은 렌더링 코드**(PetView.draw)로 stage 0·1·2 를 각각
+        // <접두사>-0.png … 로 쓴다. 경험치 바 색(초록/파랑/골드)·채움·진화형 스프라이트가
+        // 실제 화면과 픽셀 동일하다. 배경은 투명(PNG 알파).
+        if let prefix = ProcessInfo.processInfo.environment["CONNORPET_DEBUG_PETBAR"] {
+            let base = selectedPetSlug   // CONNORPET_PET 으로 이미 지정됨
+            // 단계마다 바가 보기 좋게 차도록 토큰을 고른다(앱 바는 다음 진화 지점 기준).
+            let samples: [(stage: Int, tokens: Double)] = [
+                (0, 120_000_000),   // stage 0 — 2억까지 60%
+                (1, 350_000_000),   // stage 1 — 5억까지 70%
+                (2, 520_000_000),   // stage 2 — MAX(완전체)
+            ]
+            for s in samples {
+                let slug = Self.displaySlugForTest(base: base, stage: s.stage)
+                guard let sheet = try? Self.loadSpriteSheet(slug: slug) else { continue }
+                let size = windowSize(for: sheet)
+                let view = PetView(spriteSheet: sheet)
+                view.frame = NSRect(x: 0, y: 0, width: size, height: size + PetView.barAreaHeight)
+                view.setBarAlwaysVisible(true)
+                view.setBaseAnimation(.running)   // 잠듦(회색) 대신 색이 살아 있는 포즈
+                view.setProgress(percent: XPModel.percent(tokens: s.tokens),
+                                 stage: s.stage,
+                                 detail: hoverDetail(tokens: s.tokens))
+                view.layoutSubtreeIfNeeded()
+                if let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
+                    view.cacheDisplay(in: view.bounds, to: rep)
+                    try? rep.representation(using: .png, properties: [:])?
+                        .write(to: URL(fileURLWithPath: "\(prefix)-\(s.stage).png"))
+                }
+            }
+            NSApp.terminate(nil)
+            return
+        }
+
         // 마우스 오버 문구(이름 + 경험치)를 PNG 로 떠서 확인한다:
         // CONNORPET_DEBUG_HOVER=<파일>. 글자가 잘리는지는 눈으로만 잡힌다.
         if let path = ProcessInfo.processInfo.environment["CONNORPET_DEBUG_HOVER"] {
