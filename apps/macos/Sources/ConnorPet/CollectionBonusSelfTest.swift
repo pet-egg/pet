@@ -40,11 +40,11 @@ func runCollectionBonusSelfTest() -> Never {
 
     // ── "다른" 펫만 센다 ──
     let tokens: [String: Double] = [
-        "charmander": full,         // 완전체
+        "charmander": full,         // 완전체(2진화)
         "squirtle": full * 2,       // 완전체(넘어서도 완전체)
-        "pikachu": full,            // 완전체
-        "eevee": full - 1,          // 하나 모자람
-        "ditto": 0,
+        "ditto": full,              // 완전체 — 진화 없는 펫도 완전체가 된다(요구 2·3)
+        "munchlax": full - 1,       // 하나 모자람(1진화)
+        "pichu": 0,
     ]
     guard CollectionBonus.completeCount(in: tokens) == 3 else {
         fail("전체 완전체 수가 틀렸다: \(CollectionBonus.completeCount(in: tokens))")
@@ -54,10 +54,14 @@ func runCollectionBonusSelfTest() -> Never {
         fail("자기 자신을 셌다")
     }
     // 덜 자란 펫으로 나가면 셋 다 센다.
-    guard CollectionBonus.completeCount(in: tokens, excluding: "eevee") == 3 else {
+    guard CollectionBonus.completeCount(in: tokens, excluding: "munchlax") == 3 else {
         fail("덜 자란 펫으로 나갈 때 완전체를 빠뜨렸다")
     }
-    print("[selftest] 완전체 3마리 — 파이리로 나가면 2마리(+10%), 이브이로 나가면 3마리(+15%)")
+    // 진화 없는 메타몽도 완전체로 센다 — 진화 수와 무관하게 최대경험치에 도달한다(요구 2·3).
+    guard CollectionBonus.isComplete(tokens: tokens["ditto"]!) else {
+        fail("진화 없는 펫(메타몽)이 완전체로 안 잡힌다")
+    }
+    print("[selftest] 완전체 3마리 — 파이리로 나가면 2마리(+10%), 먹고자로 나가면 3마리(+15%) · 메타몽(무진화)도 완전체")
 
     // ── 파워에 얹기 ──
     guard near(CollectionBonus.apply(0.25, to: 0.4), 0.5) else { fail("0.4 × 1.25 가 0.5 가 아니다") }

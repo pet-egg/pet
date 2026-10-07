@@ -15,7 +15,7 @@ pet/
 │  └─ windows/                Python/PySide6 — pet.exe (구 windows/)
 │     └─ pet_win/             상태워처·XP·애니메이션·스프라이트 로딩
 ├─ assets/                    ★ 에셋 정본(단일 소스)
-│  ├─ pets/<slug>/{spritesheet.png,pet.json}   기본형+진화형 36종
+│  ├─ pets/<slug>/{spritesheet.png,pet.json}   기본형+진화형 43종
 │  ├─ effects/                fire_jet·water_jet·zzz
 │  └─ app-icon.png
 ├─ shared/                    두 구현의 계약

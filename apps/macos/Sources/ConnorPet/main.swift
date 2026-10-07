@@ -12,6 +12,11 @@ if ProcessInfo.processInfo.environment["CONNORPET_SELFTEST"] == "battle" {
     runBattleSelfTest()
 }
 
+// 무진화/1진화 펫도 최대경험치·진화보너스를 받는지: `CONNORPET_SELFTEST=evolution swift run`.
+if ProcessInfo.processInfo.environment["CONNORPET_SELFTEST"] == "evolution" {
+    runEvolutionXPSelfTest()
+}
+
 // 오버레이 창들이 펫과 같은 층에 있는지: `CONNORPET_SELFTEST=overlay swift run`.
 if ProcessInfo.processInfo.environment["CONNORPET_SELFTEST"] == "overlay" {
     runOverlayLayerSelfTest()

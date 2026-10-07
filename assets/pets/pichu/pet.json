@@ -1,0 +1,136 @@
+{
+  "id": "pichu-pichu",
+  "displayName": "피츄 (Pichu)",
+  "description": "Custom connor-pet build: Pichu / 피츄 reacts to live Orca agent/project status, skinned as Pokémon status conditions — blocked/waiting=Freeze, done=Infatuation, nothing=Sleep, working=running (unchanged). Built from PMDCollab PMD sprites (dex 0172).",
+  "spritesheetPath": "spritesheet.png",
+  "frame": {
+    "width": 200,
+    "height": 200
+  },
+  "fps": 6,
+  "defaultAnimation": "idle",
+  "animations": {
+    "idle": {
+      "row": 0,
+      "frames": 8,
+      "frameDurationsMs": [
+        320,
+        320,
+        320,
+        320,
+        320,
+        320,
+        320,
+        320
+      ]
+    },
+    "running-right": {
+      "row": 1,
+      "frames": 8,
+      "frameDurationsMs": [
+        60,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60
+      ]
+    },
+    "running-left": {
+      "row": 2,
+      "frames": 8,
+      "frameDurationsMs": [
+        60,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60
+      ]
+    },
+    "waving": {
+      "row": 3,
+      "frames": 4,
+      "frameDurationsMs": [
+        256,
+        32,
+        48,
+        48
+      ]
+    },
+    "jumping": {
+      "row": 4,
+      "frames": 10,
+      "frameDurationsMs": [
+        90,
+        90,
+        90,
+        90,
+        90,
+        90,
+        90,
+        90,
+        90,
+        90
+      ]
+    },
+    "failed": {
+      "row": 5,
+      "frames": 6,
+      "frameDurationsMs": [
+        120,
+        120,
+        120,
+        120,
+        120,
+        120
+      ]
+    },
+    "waiting": {
+      "row": 6,
+      "frames": 8,
+      "frameDurationsMs": [
+        300,
+        300,
+        300,
+        300,
+        300,
+        300,
+        300,
+        300
+      ]
+    },
+    "running": {
+      "row": 7,
+      "frames": 8,
+      "frameDurationsMs": [
+        60,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60
+      ]
+    },
+    "review": {
+      "row": 8,
+      "frames": 8,
+      "frameDurationsMs": [
+        220,
+        220,
+        220,
+        220,
+        220,
+        220,
+        220,
+        220
+      ]
+    }
+  }
+}

@@ -9,6 +9,7 @@ macOS 앱(ConnorPet)과 리소스(pets/)·로직(상태 워처·XP 모델)을 �
 """
 from __future__ import annotations
 
+import json
 import os
 import sys
 
@@ -62,6 +63,7 @@ class PetWindow(QWidget):
 
         self.watcher = ClaudeCodeStatusWatcher()
         self.sheet_cache = {}
+        self._name_cache = {}
         self.current_display_slug = ""
         self.sheet: SpriteSheet | None = None
         self.current_anim_name = anim.IDLE
@@ -140,6 +142,27 @@ class PetWindow(QWidget):
         sheet = SpriteSheet(slug, resources.pet_dir(slug))
         self.sheet_cache[slug] = sheet
         return sheet
+
+    def _korean_name(self, slug):
+        """pet.json 의 displayName("피카츄 (Pikachu)")에서 한글만. PNG 디코드 없이
+        가볍게 읽어 slug 별 캐시 — 피커가 기본형+진화형 수십 개를 한 번에 그린다."""
+        if slug in self._name_cache:
+            return self._name_cache[slug]
+        name = slug
+        try:
+            with open(os.path.join(resources.pet_dir(slug), "pet.json"), encoding="utf-8") as f:
+                name = json.load(f).get("displayName", slug).split(" (")[0]
+        except Exception:  # noqa: BLE001
+            pass
+        self._name_cache[slug] = name
+        return name
+
+    def _pet_picker_label(self, base):
+        """펫 선택 피커 라벨 — 영문 괄호를 빼고 진화 사슬 전체를 하이픈으로 잇는다
+        (예: pichu → "피츄-피카츄-라이츄", ditto → "메타몽"). 고르는 건 언제나
+        미진화 기본형이지만 앞으로 어떻게 진화하는지 한눈에 보이게 한다."""
+        chain = [base] + petmeta.EVOLUTION_CHAINS.get(base, [])
+        return "-".join(self._korean_name(s) for s in chain)
 
     def _current_stage(self):
         if not self.evolution_enabled:
@@ -310,10 +333,7 @@ class PetWindow(QWidget):
         group = QActionGroup(self)
         group.setExclusive(True)
         for slug in petmeta.AVAILABLE_PET_SLUGS:
-            try:
-                name = self._cached_sheet(slug).display_name
-            except Exception:  # noqa: BLE001
-                name = slug
+            name = self._pet_picker_label(slug)
             act = QAction(name, self, checkable=True)
             act.setChecked(slug == self.base_slug)
             act.triggered.connect(lambda _=False, s=slug: self.change_pet(s))

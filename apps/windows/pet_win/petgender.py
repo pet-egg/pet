@@ -12,8 +12,8 @@ MALE = "male"
 FEMALE = "female"
 GENDERLESS = "genderless"
 
-# 암컷 확률(8분위, PokeAPI gender_rate 표기). -1 = 무성. 기본형 slug 기준.
-# 스타터·단일계열 = 1/8, 데구리/팬텀/디그다/피카츄/애버라스/미뇽 계열 = 4/8,
+# 암컷 확률(8분위, PokeAPI gender_rate 표기). -1 = 무성. 미진화 기본형 slug 기준.
+# 스타터·단일계열 = 1/8, 데구리/고오스/디그다/피츄/애버라스/미뇽 계열 = 4/8,
 # 메타몽 = 무성, 비숑(포켓몬 아님)은 50:50.
 FEMALE_RATE_BY_BASE = {
     "totodile": 1,
@@ -24,11 +24,11 @@ FEMALE_RATE_BY_BASE = {
     "torchic": 1,
     "togepi": 1,
     "tepig": 1,
-    "snorlax": 1,
+    "munchlax": 1,  # 먹고자→잠만보 계열(잠만보 본가 성비 1/8)
     "geodude": 4,
-    "gengar": 4,
+    "gastly": 4,    # 고오스→고우스트→팬텀 계열
     "diglett": 4,
-    "pikachu": 4,
+    "pichu": 4,     # 피츄→피카츄→라이츄 계열
     "larvitar": 4,
     "dratini": 4,
     "ditto": -1,
