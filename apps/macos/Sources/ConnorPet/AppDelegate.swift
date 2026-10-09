@@ -88,7 +88,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // (see scripts/build_sheet.py's PETS list, which is the source of truth for
     // this set). Display names shown in the menu come from each pet's own
     // manifest rather than being duplicated here.
-    private static let availablePetSlugs = ["totodile", "ditto", "charmander", "squirtle", "geodude", "eevee", "chikorita", "torchic", "togepi", "tepig", "snorlax", "gengar", "diglett", "pikachu", "larvitar", "dratini", "bichon", "pinkbean"]
+    private static let availablePetSlugs = ["totodile", "ditto", "charmander", "squirtle", "geodude", "eevee", "chikorita", "torchic", "togepi", "tepig", "munchlax", "gastly", "diglett", "pichu", "larvitar", "dratini", "bichon", "pinkbean"]
 
     /// 대전을 하지 않는 펫. 흰 비숑은 실제 반려견이라 **동물보호 차원에서 대전 불가** —
     /// 신청/수락/메뉴가 모두 이 목록을 보고 막힌다(불꽃 발사체로 서로를 쏘는 대전은
@@ -178,7 +178,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // evolution, stage 2 → second (see XPModel.stage). The evolved forms are
     // bundled just like the base pets (scripts/build_sheet.py builds them from
     // each next PokéDex form) but aren't offered in the picker — evolution is
-    // automatic, driven by token-usage XP. Ditto and Togepi have no evolution.
+    // automatic, driven by token-usage XP. Every pet is registered at its
+    // **unevolved** base form (pikachu→pichu, gengar→gastly, snorlax→munchlax),
+    // so the picker always shows a stage-0 form. Ditto and Togepi have no evolution.
     private static let evolutionChains: [String: [String]] = [
         "totodile": ["croconaw", "feraligatr"],
         "charmander": ["charmeleon", "charizard"],
@@ -188,13 +190,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         "torchic": ["combusken", "blaziken"],
         "eevee": ["vaporeon"],
         "diglett": ["dugtrio"],
-        "pikachu": ["raichu"],
+        "pichu": ["pikachu", "raichu"],
+        "gastly": ["haunter", "gengar"],
+        "munchlax": ["snorlax"],
+        "tepig": ["pignite", "emboar"],
         "larvitar": ["pupitar", "tyranitar"],
         "dratini": ["dragonair", "dragonite"],
         "ditto": [],
         "togepi": [],
-        "snorlax": [],
-        "gengar": [],
         "pinkbean": [],
     ]
 
@@ -449,6 +452,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 }
                 NSApp.terminate(nil)
             }
+            return
+        }
+
+        // 실제 PetView(스프라이트 + 경험치 눈금)를 진화 단계별로 PNG 로 떠서 확인한다:
+        // CONNORPET_DEBUG_PETBAR=<접두사> CONNORPET_PET=<기본형> swift run.
+        // 라이브 앱과 **같은 렌더링 코드**(PetView.draw)로 stage 0·1·2 를 각각
+        // <접두사>-0.png … 로 쓴다. 경험치 바 색(초록/파랑/골드)·채움·진화형 스프라이트가
+        // 실제 화면과 픽셀 동일하다. 배경은 투명(PNG 알파).
+        if let prefix = ProcessInfo.processInfo.environment["CONNORPET_DEBUG_PETBAR"] {
+            let base = selectedPetSlug   // CONNORPET_PET 으로 이미 지정됨
+            // 단계마다 바가 보기 좋게 차도록 토큰을 고른다(앱 바는 다음 진화 지점 기준).
+            let samples: [(stage: Int, tokens: Double)] = [
+                (0, 120_000_000),   // stage 0 — 2억까지 60%
+                (1, 350_000_000),   // stage 1 — 5억까지 70%
+                (2, 520_000_000),   // stage 2 — MAX(완전체)
+            ]
+            for s in samples {
+                let slug = Self.displaySlugForTest(base: base, stage: s.stage)
+                guard let sheet = try? Self.loadSpriteSheet(slug: slug) else { continue }
+                let size = windowSize(for: sheet)
+                let view = PetView(spriteSheet: sheet)
+                view.frame = NSRect(x: 0, y: 0, width: size, height: size + PetView.barAreaHeight)
+                view.setBarAlwaysVisible(true)
+                view.setBaseAnimation(.running)   // 잠듦(회색) 대신 색이 살아 있는 포즈
+                view.setProgress(percent: XPModel.percent(tokens: s.tokens),
+                                 stage: s.stage,
+                                 detail: hoverDetail(tokens: s.tokens))
+                view.layoutSubtreeIfNeeded()
+                if let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
+                    view.cacheDisplay(in: view.bounds, to: rep)
+                    try? rep.representation(using: .png, properties: [:])?
+                        .write(to: URL(fileURLWithPath: "\(prefix)-\(s.stage).png"))
+                }
+            }
+            NSApp.terminate(nil)
             return
         }
 
@@ -854,6 +892,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let sheet = try? loadSpriteSheet(slug: slug),
               let display = sheet.manifest.displayName else { return slug }
         return display.components(separatedBy: " (").first ?? display
+    }
+
+    /// 피커에 쓸 한글 이름. `koreanPetName` 과 같은 결과지만 **pet.json 만** 읽어(스프라이트
+    /// PNG 디코드 없이) 가볍고, slug 별로 캐시한다 — 설정 팝업/마법사가 기본형+진화형
+    /// 수십 개를 한 번에 그리므로 매 렌더마다 시트를 디코드하면 버벅인다.
+    private var koreanNameCache: [String: String] = [:]
+    private func koreanName(_ slug: String) -> String {
+        if let cached = koreanNameCache[slug] { return cached }
+        let name = Self.readManifestKoreanName(slug) ?? slug
+        koreanNameCache[slug] = name
+        return name
+    }
+
+    private static func readManifestKoreanName(_ slug: String) -> String? {
+        guard let url = resourceBundle.url(forResource: "pet", withExtension: "json", subdirectory: "pets/\(slug)"),
+              let data = try? Data(contentsOf: url),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let display = obj["displayName"] as? String else { return nil }
+        return display.components(separatedBy: " (").first ?? display
+    }
+
+    /// 펫 선택 피커에 보여줄 라벨. 영문 괄호는 빼고, **진화 사슬 전체를 하이픈으로 잇는다**
+    /// (예: `pichu` → "피츄-피카츄-라이츄", `ditto` → "메타몽"). 사용자가 고르는 건 언제나
+    /// 미진화 기본형이지만, 이 펫이 앞으로 어떤 모습으로 진화하는지 한눈에 보이게 한다.
+    private func petPickerLabel(forBase base: String) -> String {
+        let chain = [base] + (Self.evolutionChains[base] ?? [])
+        return chain.map { koreanName($0) }.joined(separator: "-")
     }
 
     /// GitHub PR·Linear 티켓을 훑어 새로 끝난 것에 경험치를 준다.
@@ -1550,10 +1615,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let opts: [FirstRunWizard.PetOption] = Self.availablePetSlugs
                 .filter { Self.category(of: $0) == cat }
                 .compactMap { slug in
-                    guard let name = petDisplayNames[slug] else { return nil }
+                    guard petDisplayNames[slug] != nil else { return nil }
                     let image = (try? Self.loadSpriteSheet(slug: slug))?
                         .resolvedAnimation(for: .idle)?.images.first
-                    return FirstRunWizard.PetOption(slug: slug, name: name, image: image)
+                    return FirstRunWizard.PetOption(slug: slug, name: petPickerLabel(forBase: slug), image: image)
                 }
             return FirstRunWizard.PetGroup(category: cat.displayName, pets: opts)
         }
@@ -1796,7 +1861,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func displaySlug(base: String, stage: Int) -> String {
-        guard stage > 0, let chain = Self.evolutionChains[base], !chain.isEmpty else { return base }
+        Self.displaySlugForTest(base: base, stage: stage)
+    }
+
+    /// `displaySlug` 의 순수 버전(상태에 의존하지 않음) — 셀프테스트가 진화 사슬 매핑을
+    /// 검증하는 데 쓴다. 진화형이 기본형보다 적은 펫은 마지막 진화형에 머문다(캡).
+    static func displaySlugForTest(base: String, stage: Int) -> String {
+        guard stage > 0, let chain = evolutionChains[base], !chain.isEmpty else { return base }
         let index = min(stage, chain.count) - 1
         return chain[index]
     }
@@ -2147,7 +2218,7 @@ extension AppDelegate: SettingsActionsDelegate {
 
     var settingsOrderedPets: [(slug: String, name: String)] {
         Self.availablePetSlugs.compactMap { slug in
-            petDisplayNames[slug].map { (slug, $0) }
+            petDisplayNames[slug] != nil ? (slug, petPickerLabel(forBase: slug)) : nil
         }
     }
 
@@ -2157,7 +2228,7 @@ extension AppDelegate: SettingsActionsDelegate {
         Self.PetCategory.allCases.map { cat in
             let pets = Self.availablePetSlugs
                 .filter { Self.category(of: $0) == cat }
-                .compactMap { slug in petDisplayNames[slug].map { (slug, $0) } }
+                .compactMap { slug in petDisplayNames[slug] != nil ? (slug, petPickerLabel(forBase: slug)) : nil }
             return (cat.displayName, pets)
         }
     }

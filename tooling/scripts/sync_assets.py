@@ -39,8 +39,8 @@ ORCA_DIR = os.path.join(REPO_ROOT, "dist", "orca")
 # apps/*/… 의 availablePetSlugs / AVAILABLE_PET_SLUGS 와 같은 목록.
 ORCA_SLUGS = [
     "totodile", "ditto", "charmander", "squirtle", "geodude", "eevee",
-    "chikorita", "torchic", "togepi", "tepig", "snorlax", "gengar",
-    "diglett", "pikachu", "larvitar", "dratini", "bichon", "pinkbean",
+    "chikorita", "torchic", "togepi", "tepig", "munchlax", "gastly",
+    "diglett", "pichu", "larvitar", "dratini", "bichon", "pinkbean",
 ]
 
 

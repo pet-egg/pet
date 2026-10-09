@@ -39,9 +39,9 @@ func runPetGenderSelfTest() -> Never {
         failClean("1/8 종(파이리)의 암수 경계가 틀렸다")
     }
     // 4/8 = rng<4 면 암컷.
-    guard PetGenders.roll(for: "pikachu", rng: { 3 }) == .female,
-          PetGenders.roll(for: "pikachu", rng: { 4 }) == .male else {
-        failClean("4/8 종(피카츄)의 암수 경계가 틀렸다")
+    guard PetGenders.roll(for: "pichu", rng: { 3 }) == .female,
+          PetGenders.roll(for: "pichu", rng: { 4 }) == .male else {
+        failClean("4/8 종(피츄)의 암수 경계가 틀렸다")
     }
     print("[selftest] 1/8·4/8 확률 경계 OK")
 
