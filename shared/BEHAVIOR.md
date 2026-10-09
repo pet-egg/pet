@@ -55,11 +55,31 @@ mac 앱(Swift, `apps/macos`)과 windows 앱(Python, `apps/windows`)은 **코드�
 - 증가분만 지금 화면의 펫에게 적립(처음 보는 트랜스크립트는 기준선만 잡음).
 - 진화 임계치: **stage 1 = 200,000,000 토큰**, **stage 2 = 500,000,000 토큰**.
 - 경험치 바 = 다음 임계치까지의 비율(0~1), 최종 단계면 가득.
+- **EXP 눈금·진화보너스는 진화 수와 무관하다.** 임계치(2억/5억)와 만렙(5억), 그리고
+  대전 진화보너스(stage 0·1·2 → ×1.0·1.15·1.30, 정규화 후 최대 파워 1.0)는 **펫을
+  인자로 받지 않고 토큰·stage 만 본다**. 따라서 진화가 없거나(ditto·togepi) 1진화만
+  있는 펫(eevee·munchlax·diglett)도 **똑같이 최대경험치(5억)까지 쌓고, stage 2 에서
+  +30% 보너스를 받는다**. 스프라이트만 마지막 진화형에서 멈출 뿐(캡), 눈금·보너스는
+  2진화 펫과 동일하다. 회귀 방지: `CONNORPET_SELFTEST=evolution`.
 
 ## 진화 사슬
+**모든 펫은 미진화 기본형에서 시작한다**(피카츄는 피츄부터).
 `totodile→croconaw→feraligatr`, `charmander→charmeleon→charizard`,
 `squirtle→wartortle→blastoise`, `geodude→graveler→golem`,
 `chikorita→bayleef→meganium`, `torchic→combusken→blaziken`,
-`eevee→vaporeon`, `diglett→dugtrio`, `pikachu→raichu`,
+`eevee→vaporeon`, `diglett→dugtrio`, `pichu→pikachu→raichu`,
+`gastly→haunter→gengar`, `munchlax→snorlax`, `tepig→pignite→emboar`,
 `larvitar→pupitar→tyranitar`, `dratini→dragonair→dragonite`.
-`ditto`/`togepi`/`snorlax`/`gengar`/`bichon` 은 진화 없음.
+`ditto`/`togepi`/`bichon`/`pinkbean` 은 진화 없음.
+
+## 성별 (gender)
+- **부화(처음 키우기 시작) 시 확률로 한 번만** 정하고, 그 뒤로는 바뀌지 않는다.
+  경험치와 **완전히 별도 저장**이라 업데이트해도 경험치는 유지되고 성별만 새로 배정된다.
+- **기본형 slug 기준으로 저장**(진화해도 같은 성별 — 이름과 같은 규칙).
+- 암컷 확률은 포켓몬 본가 성비(PokeAPI `gender_rate`, 8분위). `-1` = 무성:
+  - **1/8 암컷**(♂ 87.5%): `totodile` `charmander` `squirtle` `eevee` `chikorita`
+    `torchic` `togepi` `tepig` `munchlax`
+  - **4/8(50:50)**: `geodude` `gastly` `diglett` `pichu` `larvitar` `dratini` · `bichon`(비포켓몬, 50:50로 둠)
+  - **무성**: `ditto` (기호 없음)
+- 표시: 이름 **오른쪽**에 수컷 `♂`(파랑) / 암컷 `♀`(분홍), 무성은 기호 없음.
+  맥은 호버 이름표(이름 줄)에 붙이고, 윈도우는 이름 표시가 없어 펫 오른쪽 위에 기호만 띄운다.

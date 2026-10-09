@@ -3,8 +3,18 @@ import AppKit
 // Headless LAN-battle handshake test: `CONNORPET_SELFTEST=battle swift run`.
 // Runs two BattleServices in-process and verifies discovery → challenge →
 // accept → agreed outcome, then exits. Never returns.
+// 완전체 수집 보너스: `CONNORPET_SELFTEST=collection swift run`.
+if ProcessInfo.processInfo.environment["CONNORPET_SELFTEST"] == "collection" {
+    runCollectionBonusSelfTest()
+}
+
 if ProcessInfo.processInfo.environment["CONNORPET_SELFTEST"] == "battle" {
     runBattleSelfTest()
+}
+
+// 무진화/1진화 펫도 최대경험치·진화보너스를 받는지: `CONNORPET_SELFTEST=evolution swift run`.
+if ProcessInfo.processInfo.environment["CONNORPET_SELFTEST"] == "evolution" {
+    runEvolutionXPSelfTest()
 }
 
 // 오버레이 창들이 펫과 같은 층에 있는지: `CONNORPET_SELFTEST=overlay swift run`.
@@ -15,6 +25,11 @@ if ProcessInfo.processInfo.environment["CONNORPET_SELFTEST"] == "overlay" {
 // 펫 이름 저장과 한국어 조사: `CONNORPET_SELFTEST=petname swift run`.
 if ProcessInfo.processInfo.environment["CONNORPET_SELFTEST"] == "petname" {
     runPetNameSelfTest()
+}
+
+// 성별 배정·저장·고정 규칙: `CONNORPET_SELFTEST=gender swift run`.
+if ProcessInfo.processInfo.environment["CONNORPET_SELFTEST"] == "gender" {
+    runPetGenderSelfTest()
 }
 
 // 실행 방식이 바뀌었을 때 경험치 이관: `CONNORPET_SELFTEST=migration swift run`.
@@ -55,6 +70,11 @@ if ProcessInfo.processInfo.environment["CONNORPET_SELFTEST"] == "celebrate" {
 // 퀘스트 지급 규칙과 실제 조회: `CONNORPET_SELFTEST=quest swift run`.
 if ProcessInfo.processInfo.environment["CONNORPET_SELFTEST"] == "quest" {
     runQuestSelfTest()
+}
+
+// 펫 우클릭 메뉴에 대전·노려보기가 들어가는지: `CONNORPET_SELFTEST=contextmenu swift run`.
+if ProcessInfo.processInfo.environment["CONNORPET_SELFTEST"] == "contextmenu" {
+    runContextMenuSelfTest()
 }
 
 // 지시한 모션이 시간이 지나면 스스로 풀리는지: `CONNORPET_SELFTEST=pin swift run`.

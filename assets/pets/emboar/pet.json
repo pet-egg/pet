@@ -1,11 +1,11 @@
 {
-  "id": "dragonite-evolved",
-  "displayName": "망나뇽 (Dragonite)",
-  "description": "Custom connor-pet build (evolved form): 망나뇽 (Dragonite) reacts to live Orca/Claude Code agent status, skinned as Pokémon status conditions — blocked/waiting=Freeze, done=Infatuation, nothing=Sleep, working=running. Built from PokeAPI gen5 battle sprites.",
+  "id": "emboar-evolved",
+  "displayName": "염무왕 (Emboar)",
+  "description": "Custom connor-pet build (evolved form): 염무왕 (Emboar) reacts to live Orca/Claude Code agent status, skinned as Pokémon status conditions — blocked/waiting=Freeze, done=Infatuation, nothing=Sleep, working=running. Built from PokeAPI gen5 battle sprites.",
   "spritesheetPath": "spritesheet.png",
   "frame": {
-    "width": 320,
-    "height": 320
+    "width": 200,
+    "height": 200
   },
   "fps": 6,
   "defaultAnimation": "idle",
@@ -161,78 +161,6 @@
         220,
         220
       ]
-    },
-    "hyper-beam": {
-      "row": 9,
-      "frames": 10,
-      "frameDurationsMs": [
-        110,
-        110,
-        110,
-        110,
-        110,
-        110,
-        110,
-        110,
-        110,
-        110
-      ]
     }
-  },
-  "skill": {
-    "row": "hyper-beam",
-    "effect": "hyper_beam.png",
-    "mouthByFrame": [
-      {
-        "x": 83,
-        "y": 107,
-        "grow": 0.0
-      },
-      {
-        "x": 89,
-        "y": 107,
-        "grow": 0.0
-      },
-      {
-        "x": 95,
-        "y": 107,
-        "grow": 0.0
-      },
-      {
-        "x": 103,
-        "y": 107,
-        "grow": 0.45
-      },
-      {
-        "x": 107,
-        "y": 107,
-        "grow": 0.588
-      },
-      {
-        "x": 111,
-        "y": 107,
-        "grow": 0.725
-      },
-      {
-        "x": 115,
-        "y": 107,
-        "grow": 0.863
-      },
-      {
-        "x": 119,
-        "y": 107,
-        "grow": 1.0
-      },
-      {
-        "x": 94,
-        "y": 107,
-        "grow": 0.0
-      },
-      {
-        "x": 83,
-        "y": 107,
-        "grow": 0.0
-      }
-    ]
   }
 }

@@ -1,0 +1,205 @@
+{
+ "id": "pinkbean-pinkbean",
+ "displayName": "핑크빈 (Pink Bean)",
+ "description": "MapleStory Pink Bean (핑크빈) desktop pet. idle=흑백 Zzz 수면, running=걷기, waiting=파란 정령 소환, review=RC 자동차 조작, hover(jumping)=초록 해골, failed=어둠 변신. Sprites extracted from MapleStory client via maplestory.io (mob 8820000/8820001, GMS 230) — © Nexon.",
+ "spritesheetPath": "spritesheet.png",
+ "frame": {
+  "width": 220,
+  "height": 220
+ },
+ "fps": 10,
+ "defaultAnimation": "idle",
+ "animations": {
+  "idle": {
+   "row": 0,
+   "frames": 23,
+   "frameDurationsMs": [
+    150,
+    150,
+    150,
+    150,
+    150,
+    150,
+    150,
+    150,
+    150,
+    150,
+    150,
+    150,
+    150,
+    150,
+    150,
+    150,
+    150,
+    150,
+    150,
+    150,
+    150,
+    150,
+    150
+   ]
+  },
+  "running": {
+   "row": 1,
+   "frames": 8,
+   "frameDurationsMs": [
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95
+   ]
+  },
+  "running-right": {
+   "row": 2,
+   "frames": 8,
+   "frameDurationsMs": [
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95
+   ]
+  },
+  "running-left": {
+   "row": 3,
+   "frames": 8,
+   "frameDurationsMs": [
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95
+   ]
+  },
+  "waiting": {
+   "row": 4,
+   "frames": 18,
+   "frameDurationsMs": [
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95
+   ]
+  },
+  "review": {
+   "row": 5,
+   "frames": 26,
+   "frameDurationsMs": [
+    130,
+    130,
+    130,
+    130,
+    130,
+    130,
+    130,
+    130,
+    130,
+    130,
+    130,
+    130,
+    130,
+    130,
+    130,
+    130,
+    130,
+    130,
+    130,
+    130,
+    130,
+    130,
+    130,
+    130,
+    130,
+    130
+   ]
+  },
+  "jumping": {
+   "row": 6,
+   "frames": 12,
+   "frameDurationsMs": [
+    80,
+    80,
+    80,
+    80,
+    80,
+    80,
+    80,
+    80,
+    80,
+    80,
+    80,
+    80
+   ]
+  },
+  "waving": {
+   "row": 7,
+   "frames": 14,
+   "frameDurationsMs": [
+    90,
+    90,
+    90,
+    90,
+    90,
+    90,
+    90,
+    90,
+    90,
+    90,
+    90,
+    90,
+    90,
+    90
+   ]
+  },
+  "failed": {
+   "row": 8,
+   "frames": 20,
+   "frameDurationsMs": [
+    110,
+    110,
+    110,
+    110,
+    110,
+    110,
+    110,
+    110,
+    110,
+    110,
+    110,
+    110,
+    110,
+    110,
+    110,
+    110,
+    110,
+    110,
+    110,
+    110
+   ]
+  }
+ }
+}

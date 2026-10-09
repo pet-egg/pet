@@ -20,6 +20,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var updateVersion: String?
     private var bubble: SpeechBubbleWindow?
     private var flame: FlameWindow?
+    private var confetti: ConfettiWindow?
+    private var celebrationGuests: CelebrationGuestsWindow?
     private var xpDetailWindow: XPDetailWindow?
     private var xpHovering = false
     private var flameAspect: CGFloat = 1.47
@@ -86,7 +88,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // (see scripts/build_sheet.py's PETS list, which is the source of truth for
     // this set). Display names shown in the menu come from each pet's own
     // manifest rather than being duplicated here.
-    private static let availablePetSlugs = ["totodile", "ditto", "charmander", "squirtle", "geodude", "eevee", "chikorita", "torchic", "togepi", "tepig", "snorlax", "gengar", "diglett", "pikachu", "larvitar", "dratini", "bichon"]
+    private static let availablePetSlugs = ["totodile", "ditto", "charmander", "squirtle", "geodude", "eevee", "chikorita", "torchic", "togepi", "tepig", "munchlax", "gastly", "diglett", "pichu", "larvitar", "dratini", "bichon", "pinkbean"]
 
     /// 대전을 하지 않는 펫. 흰 비숑은 실제 반려견이라 **동물보호 차원에서 대전 불가** —
     /// 신청/수락/메뉴가 모두 이 목록을 보고 막힌다(불꽃 발사체로 서로를 쏘는 대전은
@@ -97,8 +99,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// 포켓몬 상태이상(얼음)이 어색하므로 대기(blocked/waiting) 상태를 "앉아서 고개
     /// 갸웃 + ? 말풍선"으로 다르게 그린다 — 그 리스킨은 빌드 타임에 이뤄지고
     /// (scripts/build_sheet.py 의 category 분기, PETS 의 "category":"animal"), 여기
-    /// 분류는 그와 짝을 이룬다. 아직 펫이 없는 카테고리(메이플스토리)는 UI 에서
-    /// "준비 중"으로 노출된다.
+    /// 분류는 그와 짝을 이룬다. 메이플스토리 카테고리는 핑크빈(비포켓몬)이 채운다 —
+    /// 핑크빈 스프라이트는 PokeAPI 가 아니라 maplestory.io 에서 받아
+    /// tooling/scripts/build_pinkbean_sheet.py 로 따로 굽는다.
     enum PetCategory: String, CaseIterable {
         case pokemon
         case animal
@@ -115,6 +118,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// slug → 대분류. 여기 없는 펫은 .pokemon 으로 본다(build_sheet.py 도 동일 기본값).
     private static let petCategories: [String: PetCategory] = [
         "bichon": .animal,
+        "pinkbean": .maplestory,
     ]
 
     static func category(of slug: String) -> PetCategory { petCategories[slug] ?? .pokemon }
@@ -131,6 +135,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// 이 둘을 섞어서 실제로 났던 버그: 대전 화면이 리자몽으로 진화해 놓고도 파이리를
     /// 그렸다. 상대는 진화형으로 보이는데(광고하는 slug 는 표시형이다) 내 쪽만
     /// 기본형이라 더 눈에 띄었다.
+    /// 지금 펫에 붙는 수집 보너스 — 이 펫을 뺀 완전체 수로 정한다.
+    private var collectionBonus: Double {
+        CollectionBonus.bonus(forCompleteCount:
+            CollectionBonus.completeCount(in: petTokens, excluding: selectedPetSlug))
+    }
+
     private var displayedPetSlug: String {
         currentDisplaySlug.isEmpty ? selectedPetSlug : currentDisplaySlug
     }
@@ -168,7 +178,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // evolution, stage 2 → second (see XPModel.stage). The evolved forms are
     // bundled just like the base pets (scripts/build_sheet.py builds them from
     // each next PokéDex form) but aren't offered in the picker — evolution is
-    // automatic, driven by token-usage XP. Ditto and Togepi have no evolution.
+    // automatic, driven by token-usage XP. Every pet is registered at its
+    // **unevolved** base form (pikachu→pichu, gengar→gastly, snorlax→munchlax),
+    // so the picker always shows a stage-0 form. Ditto and Togepi have no evolution.
     private static let evolutionChains: [String: [String]] = [
         "totodile": ["croconaw", "feraligatr"],
         "charmander": ["charmeleon", "charizard"],
@@ -178,13 +190,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         "torchic": ["combusken", "blaziken"],
         "eevee": ["vaporeon"],
         "diglett": ["dugtrio"],
-        "pikachu": ["raichu"],
+        "pichu": ["pikachu", "raichu"],
+        "gastly": ["haunter", "gengar"],
+        "munchlax": ["snorlax"],
+        "tepig": ["pignite", "emboar"],
         "larvitar": ["pupitar", "tyranitar"],
         "dratini": ["dragonair", "dragonite"],
         "ditto": [],
         "togepi": [],
-        "snorlax": [],
-        "gengar": [],
+        "pinkbean": [],
     ]
 
     // Whether the pet evolves at all (menu toggle). When off it stays the base
@@ -252,8 +266,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // 반영·저장하고, 이후엔 저장된 값을 그대로 복원한다.
         maybeRunFirstRunWizard()
 
-        guard let sheet = try? Self.loadSpriteSheet(slug: selectedPetSlug) else {
-            fatalError("connor-pet: bundled pet '\(selectedPetSlug)' not found")
+        // 선택된 펫을 못 읽어도 앱을 통째로 떨구지 않는다. 저장값·마법사·강제 env 가
+        // 이 빌드에 없는 펫을 집었을 수 있으니, 실제로 로드되는 다른 펫으로 폴백한다
+        // (petDisplayNames 는 위 루프에서 성공적으로 읽힌 펫만 담으므로 그 항목은 반드시
+        // 로드된다). 단 하나도 로드 안 됐으면(리소스 미동기화 등) 안내 후 깔끔히 종료한다.
+        let sheet: SpriteSheet
+        if let loaded = try? Self.loadSpriteSheet(slug: selectedPetSlug) {
+            sheet = loaded
+        } else if let fallbackSlug = Self.availablePetSlugs.first(where: { petDisplayNames.keys.contains($0) }),
+                  let loaded = try? Self.loadSpriteSheet(slug: fallbackSlug) {
+            NSLog("connor-pet: 펫 '\(selectedPetSlug)' 로드 실패 → '\(fallbackSlug)' 로 폴백")
+            selectedPetSlug = fallbackSlug
+            Self.savePetSlug(fallbackSlug)
+            sheet = loaded
+        } else {
+            Self.presentMissingResourcesAlertAndTerminate()
+            return
         }
 
         // 창 너비는 그 펫의 프레임 크기에 비례한다(파이리·꼬부기는 400px 프레임이라
@@ -324,8 +352,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             Self.saveFireBreathAt(Date())
             guard let self, let petFrame = self.window?.frame else { return }
             // 이 콜백은 속성기를 실제로 쓴 직후에만 불리므로 noun 은 항상 있다.
-            let noun = self.currentSkillNoun ?? "한 방"
-            self.bubble?.show(text: "\(noun) 뿜었다! 여기까지 정리하고 앞으로 할 일만 볼게.",
+            let did = self.currentSkill?.skillDidPhrase ?? "한 방 날렸다"
+            self.bubble?.show(text: "\(did)! 여기까지 정리하고 앞으로 할 일만 볼게.",
                               above: petFrame, duration: 3.5)
         }
         view.onHoverEnter = { [weak self] in
@@ -333,6 +361,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         view.onOpenSettings = { [weak self] in self?.openSettingsWindow() }
         view.onToggleDND = { [weak self] in self?.toggleDND() }
+        view.onWeddingCelebration = { [weak self] in
+            self?.joinWeddingCelebration()
+        }
+        // 우클릭 메뉴에서도 대전 신청·노려보기. 메뉴바와 같은 항목을 그대로 쓴다.
+        view.onBuildSocialMenuItems = { [weak self] in
+            guard let self else { return [] }
+            return [self.makeBattleMenuItem(), self.makeStareMenuItem()]
+        }
         view.onHoverChanged = { [weak self] on in
             self?.xpHovering = on
             self?.updateXPDetailWindow()
@@ -343,6 +379,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         window = win
         petView = view
         bubble = SpeechBubbleWindow()
+        confetti = ConfettiWindow()
+        celebrationGuests = CelebrationGuestsWindow()
         xpDetailWindow = XPDetailWindow()
         challengeBubble = ChallengeBubbleWindow()
         challengeCountdown = ChallengeCountdownWindow()
@@ -358,6 +396,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         startBattleService()
         startQuestService()
+
+        // 디버그 전용: 결혼식 축하를 1.5초 뒤 자동으로 터뜨린다 — CONNORPET_DEBUG_WEDDING=1.
+        // 값에 쉼표로 손님 펫 slug 을 주면(CONNORPET_DEBUG_WEDDING=pikachu,totodile) 발견
+        // 없이도 여러 마리 참여 화면을 눈으로 확인할 수 있다.
+        if let flag = ProcessInfo.processInfo.environment["CONNORPET_DEBUG_WEDDING"] {
+            let fakeGuests = flag.split(separator: ",").map(String.init).filter { !$0.isEmpty }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                self?.runWeddingCelebration(guestSlugs: fakeGuests)
+            }
+        }
+
+        // 디버그 전용: 펫 우클릭 메뉴의 실제 구성을 출력하고 종료한다 —
+        // CONNORPET_DEBUG_CONTEXTMENU=1. 상대 목록은 발견에 몇 초 걸리므로 기다렸다 찍는다.
+        if ProcessInfo.processInfo.environment["CONNORPET_DEBUG_CONTEXTMENU"] != nil {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
+                guard let menu = self?.petView?.makeContextMenu() else {
+                    print("[contextmenu] 펫 창이 없다"); NSApp.terminate(nil); return
+                }
+                for item in menu.items {
+                    if item.isSeparatorItem { print("[contextmenu] ───"); continue }
+                    print("[contextmenu] \(item.title)\(item.isEnabled ? "" : " (잠김)")")
+                    for sub in item.submenu?.items ?? [] {
+                        print("[contextmenu]     \(sub.title)\(sub.isEnabled ? "" : " (잠김)")")
+                    }
+                }
+                NSApp.terminate(nil)
+            }
+        }
 
         // 디버그 전용: 설정창 레이아웃을 PNG 로 떠서 확인하고 곧장 종료한다.
         if let path = ProcessInfo.processInfo.environment["CONNORPET_DEBUG_SETTINGS"] {
@@ -386,6 +452,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 }
                 NSApp.terminate(nil)
             }
+            return
+        }
+
+        // 실제 PetView(스프라이트 + 경험치 눈금)를 진화 단계별로 PNG 로 떠서 확인한다:
+        // CONNORPET_DEBUG_PETBAR=<접두사> CONNORPET_PET=<기본형> swift run.
+        // 라이브 앱과 **같은 렌더링 코드**(PetView.draw)로 stage 0·1·2 를 각각
+        // <접두사>-0.png … 로 쓴다. 경험치 바 색(초록/파랑/골드)·채움·진화형 스프라이트가
+        // 실제 화면과 픽셀 동일하다. 배경은 투명(PNG 알파).
+        if let prefix = ProcessInfo.processInfo.environment["CONNORPET_DEBUG_PETBAR"] {
+            let base = selectedPetSlug   // CONNORPET_PET 으로 이미 지정됨
+            // 단계마다 바가 보기 좋게 차도록 토큰을 고른다(앱 바는 다음 진화 지점 기준).
+            let samples: [(stage: Int, tokens: Double)] = [
+                (0, 120_000_000),   // stage 0 — 2억까지 60%
+                (1, 350_000_000),   // stage 1 — 5억까지 70%
+                (2, 520_000_000),   // stage 2 — MAX(완전체)
+            ]
+            for s in samples {
+                let slug = Self.displaySlugForTest(base: base, stage: s.stage)
+                guard let sheet = try? Self.loadSpriteSheet(slug: slug) else { continue }
+                let size = windowSize(for: sheet)
+                let view = PetView(spriteSheet: sheet)
+                view.frame = NSRect(x: 0, y: 0, width: size, height: size + PetView.barAreaHeight)
+                view.setBarAlwaysVisible(true)
+                view.setBaseAnimation(.running)   // 잠듦(회색) 대신 색이 살아 있는 포즈
+                view.setProgress(percent: XPModel.percent(tokens: s.tokens),
+                                 stage: s.stage,
+                                 detail: hoverDetail(tokens: s.tokens))
+                view.layoutSubtreeIfNeeded()
+                if let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
+                    view.cacheDisplay(in: view.bounds, to: rep)
+                    try? rep.representation(using: .png, properties: [:])?
+                        .write(to: URL(fileURLWithPath: "\(prefix)-\(s.stage).png"))
+                }
+            }
+            NSApp.terminate(nil)
             return
         }
 
@@ -549,7 +650,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard let self else { return 0 }
             let tokens = self.petTokens[self.selectedPetSlug] ?? 0
             let stage = self.evolutionEnabled ? XPModel.stage(tokens: tokens) : 0
-            return battlePower(tokens: tokens, stage: stage)
+            // 다른 펫들 중 완전체 수만큼 스탯을 올린다(CollectionBonus). 파워는 상대에게도
+            // 실려 가므로 양쪽 계산이 같은 값을 쓴다 — 프로토콜은 바뀌지 않는다.
+            return CollectionBonus.apply(self.collectionBonus, to: battlePower(tokens: tokens, stage: stage))
         }
         service.onStare = { [weak self] fromName, fromPet, nickname in
             self?.presentStare(fromName: fromName, fromPet: fromPet, nickname: nickname)
@@ -564,6 +667,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         service.start()
         battleService = service
+    }
+
+    /// 결혼식 축하가 유지되는 시간(초). 빵빠레·손님 펫·말풍선이 이 동안 이어진다.
+    static let weddingCelebrationDuration: TimeInterval = 30
+
+    /// 결혼식 축하에 참여한다("참여하기"). 내 화면에서만 일어나는 일이다 —
+    /// 남의 화면에는 아무것도 띄우지 않는다.
+    ///
+    /// 같은 Wi-Fi 에서 이미 발견된 다른 사람들의 펫(Bonjour TXT 로 알고 있다)을
+    /// 내 펫 주위로 불러와 **여러 마리가 함께** 빵빠레를 터뜨린다. 방해금지 중인
+    /// 상대는 부르지 않는다(참여 의사가 없다고 본다).
+    private func joinWeddingCelebration() {
+        let guestSlugs = battlePeers.filter { !$0.dnd }.map { $0.pet }
+        runWeddingCelebration(guestSlugs: guestSlugs)
+    }
+
+    /// 실제로 축하를 재생한다. 메뉴("참여하기")와 디버그 트리거가 공유하는 경로다.
+    private func runWeddingCelebration(guestSlugs: [String]) {
+        guard let petFrame = window?.frame else { return }
+        let duration = Self.weddingCelebrationDuration
+        confetti?.celebrate(around: petFrame, duration: duration)
+        celebrationGuests?.welcome(slugs: guestSlugs, around: petFrame, duration: duration)
+
+        // 축하 문구 두 개를 번갈아 줄 세워, 30초 동안 말풍선이 끊기지 않게 채운다.
+        let phrases = guestSlugs.isEmpty
+            ? ["빈스의 결혼을 축하드립니다.", "빈스의 결혼을 축하합니다"]
+            : ["다 함께\n빈스의 결혼을 축하드립니다.", "빈스의 결혼을 축하합니다"]
+        let cycle = PetView.celebrationDuration + PetView.celebrationGap
+        let count = max(phrases.count, Int((duration / cycle).rounded(.up)))
+        for i in 0..<count {
+            petView?.enqueueCelebration(phrases[i % phrases.count], style: .reward)
+        }
     }
 
     // Test hook: when CONNORPET_BATTLE_AUTOCHALLENGE is set, challenge the first
@@ -757,6 +892,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let sheet = try? loadSpriteSheet(slug: slug),
               let display = sheet.manifest.displayName else { return slug }
         return display.components(separatedBy: " (").first ?? display
+    }
+
+    /// 피커에 쓸 한글 이름. `koreanPetName` 과 같은 결과지만 **pet.json 만** 읽어(스프라이트
+    /// PNG 디코드 없이) 가볍고, slug 별로 캐시한다 — 설정 팝업/마법사가 기본형+진화형
+    /// 수십 개를 한 번에 그리므로 매 렌더마다 시트를 디코드하면 버벅인다.
+    private var koreanNameCache: [String: String] = [:]
+    private func koreanName(_ slug: String) -> String {
+        if let cached = koreanNameCache[slug] { return cached }
+        let name = Self.readManifestKoreanName(slug) ?? slug
+        koreanNameCache[slug] = name
+        return name
+    }
+
+    private static func readManifestKoreanName(_ slug: String) -> String? {
+        guard let url = resourceBundle.url(forResource: "pet", withExtension: "json", subdirectory: "pets/\(slug)"),
+              let data = try? Data(contentsOf: url),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let display = obj["displayName"] as? String else { return nil }
+        return display.components(separatedBy: " (").first ?? display
+    }
+
+    /// 펫 선택 피커에 보여줄 라벨. 영문 괄호는 빼고, **진화 사슬 전체를 하이픈으로 잇는다**
+    /// (예: `pichu` → "피츄-피카츄-라이츄", `ditto` → "메타몽"). 사용자가 고르는 건 언제나
+    /// 미진화 기본형이지만, 이 펫이 앞으로 어떤 모습으로 진화하는지 한눈에 보이게 한다.
+    private func petPickerLabel(forBase base: String) -> String {
+        let chain = [base] + (Self.evolutionChains[base] ?? [])
+        return chain.map { koreanName($0) }.joined(separator: "-")
     }
 
     /// GitHub PR·Linear 티켓을 훑어 새로 끝난 것에 경험치를 준다.
@@ -973,10 +1135,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// 체크포인트를 찍은 시점의 펫이 아니라 **지금 보이는 펫** 기준이다. 펫을 바꿔
     /// 가며 쓰는 상황에서 어느 쪽이 맞다고 하기 어려운데, 말풍선을 띄우는 그 펫이
     /// 자기 기술로 말하는 편이 덜 어색하다.
-    private var currentSkillNoun: String? {
-        guard let row = petView?.currentSpriteSheet.manifest.skill?.row,
-              let name = PetAnimationName(rawValue: row) else { return nil }
-        return name.skillNoun
+    private var currentSkill: PetAnimationName? {
+        guard let row = petView?.currentSpriteSheet.manifest.skill?.row else { return nil }
+        return PetAnimationName(rawValue: row)
     }
 
     /// 지금 말해야 할 브리프 묶음과 앞에 붙일 문장. 클릭과 예열이 **같은** 묶음을
@@ -998,7 +1159,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 )
                 // 체크포인트를 찍어 둔 뒤 속성기가 없는 펫으로 바꿔 놓았을 수 있다.
                 // 그 펫이 "불 뿜은 뒤로" 라고 말하면 이상하므로 중립 문구를 쓴다.
-                let since = currentSkillNoun.map { "\($0) 뿜은 뒤로" } ?? "여기까지 정리한 뒤로"
+                let since = currentSkill?.skillSincePhrase.map { "\($0) 뒤로" } ?? "여기까지 정리한 뒤로"
                 return (briefs, "\(since) 이것들만 남았어.",
                         "\(since) 새로 시작한 작업은 아직 없어. 깨끗해.", window)
             }
@@ -1438,9 +1599,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// 마법사에서 고른 펫으로 창을 띄운다.
     private func maybeRunFirstRunWizard() {
         guard !Self.didCompleteFirstRun() else { return }
-        // 헤드리스 셀프테스트/설정 PNG 덤프/강제 펫 지정 실행에서는 모달로 막지 않는다.
+        // 헤드리스 셀프테스트/디버그 덤프/강제 펫 지정 실행에서는 모달로 막지 않는다.
+        // 디버그 덤프는 `CONNORPET_DEBUG_` 로 시작하는 변수 전부다 — 하나씩 나열했더니
+        // 새로 만든 덤프(우클릭 메뉴)가 빠져, 마법사를 안 끝낸 환경에서 모달에 막혀
+        // 아무것도 찍지 않고 종료도 하지 않았다.
         let env = ProcessInfo.processInfo.environment
-        if env["CONNORPET_SELFTEST"] != nil || env["CONNORPET_DEBUG_SETTINGS"] != nil || env["CONNORPET_PET"] != nil {
+        let debugDump = env.keys.contains { $0.hasPrefix("CONNORPET_DEBUG_") }
+        if env["CONNORPET_SELFTEST"] != nil || debugDump || env["CONNORPET_PET"] != nil {
             return
         }
 
@@ -1450,10 +1615,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let opts: [FirstRunWizard.PetOption] = Self.availablePetSlugs
                 .filter { Self.category(of: $0) == cat }
                 .compactMap { slug in
-                    guard let name = petDisplayNames[slug] else { return nil }
+                    guard petDisplayNames[slug] != nil else { return nil }
                     let image = (try? Self.loadSpriteSheet(slug: slug))?
                         .resolvedAnimation(for: .idle)?.images.first
-                    return FirstRunWizard.PetOption(slug: slug, name: name, image: image)
+                    return FirstRunWizard.PetOption(slug: slug, name: petPickerLabel(forBase: slug), image: image)
                 }
             return FirstRunWizard.PetGroup(category: cat.displayName, pets: opts)
         }
@@ -1598,7 +1763,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // 종 이름은 보이는 쪽(진화형), 지어 준 이름은 기본형에 저장돼 있다.
         let species = Self.koreanPetName(displayedPetSlug)
         let name = PetNames.display(for: selectedPetSlug, fallback: species)
-        return "\(name)\n\(Self.xpDetail(tokens: tokens))"
+        // 성별 기호(수컷 ♂ / 암컷 ♀)를 이름 바로 오른쪽에. 부화 시 확률로 한 번만
+        // 정해지고(처음 resolve 되는 순간) 그 뒤로는 고정이다. 무성(메타몽)은 기호 없음.
+        // 색칠은 XPDetailWindow 가 기호를 보고 한다.
+        let gender = PetGenders.resolve(for: selectedPetSlug)
+        let named = gender.symbol.map { "\(name) \($0)" } ?? name
+        // 완전체 한 마리당 별 하나(CollectionBonus.stars). 없으면 이름(+성별)만.
+        let stars = CollectionBonus.stars(forCompleteCount: CollectionBonus.completeCount(in: petTokens))
+        let title = stars.isEmpty ? named : "\(named) \(stars)"
+        return "\(title)\n\(Self.xpDetail(tokens: tokens))"
     }
 
     private static func xpDetail(tokens: Double) -> String {
@@ -1660,6 +1833,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         petView?.setSpriteSheet(sheet)
         loadSkillEffect(for: sheet)
+
+        // 라벨·호버 문구 첫 줄(종 이름)은 `displayedPetSlug` 에 의존하는데, 그 값은
+        // 방금 이 함수가 바꿨다. `applyStage()` 는 이 함수보다 **먼저** 돌며 아직 옛
+        // 표시형으로 라벨을 그리므로(펫 교체·진화 모두 그 순서다), 여기서 다시 그려야
+        // 스프라이트는 새 펫인데 이름만 이전 펫으로 남는 어긋남을 막는다.
+        petView?.setProgress(percent: currentPercent, stage: currentStage,
+                             detail: hoverDetail(tokens: petTokens[selectedPetSlug] ?? 0))
+        updateXPDetailWindow()
+
         if ProcessInfo.processInfo.environment["CONNORPET_DEBUG"] != nil {
             let t = Int(petTokens[selectedPetSlug] ?? 0)
             let ww = Int(self.window?.frame.width ?? 0)
@@ -1679,7 +1861,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func displaySlug(base: String, stage: Int) -> String {
-        guard stage > 0, let chain = Self.evolutionChains[base], !chain.isEmpty else { return base }
+        Self.displaySlugForTest(base: base, stage: stage)
+    }
+
+    /// `displaySlug` 의 순수 버전(상태에 의존하지 않음) — 셀프테스트가 진화 사슬 매핑을
+    /// 검증하는 데 쓴다. 진화형이 기본형보다 적은 펫은 마지막 진화형에 머문다(캡).
+    static func displaySlugForTest(base: String, stage: Int) -> String {
+        guard stage > 0, let chain = evolutionChains[base], !chain.isEmpty else { return base }
         let index = min(stage, chain.count) - 1
         return chain[index]
     }
@@ -1689,6 +1877,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let sheet = try? Self.loadSpriteSheet(slug: slug) else { return nil }
         sheetCache[slug] = sheet
         return sheet
+    }
+
+    // 번들에 펫 스프라이트가 하나도 없을 때(Resources/pets 미동기화 등) 호출된다.
+    // 예전에는 여기서 fatalError 로 앱이 크래시 리포터와 함께 떨어졌는데, 사용자에겐
+    // 원인·해결법을 알 수 없는 "그냥 죽음"이라 대신 명확한 안내 창을 띄우고 종료한다.
+    private static func presentMissingResourcesAlertAndTerminate() {
+        NSLog("connor-pet: 번들에 로드 가능한 펫이 하나도 없음 — 리소스 미동기화로 추정")
+        let alert = NSAlert()
+        alert.alertStyle = .critical
+        alert.messageText = "펫 리소스를 찾을 수 없어요"
+        alert.informativeText = """
+        펫 스프라이트(Resources/pets)가 번들에 없어 앱을 시작할 수 없습니다.
+
+        개발 중이라면 저장소 루트에서 아래를 실행한 뒤 다시 켜 주세요:
+            python3 tooling/scripts/sync_assets.py
+
+        정식 배포본에서 이 창이 떴다면 앱을 다시 설치해 주세요.
+        """
+        alert.addButton(withTitle: "종료")
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
+        NSApp.terminate(nil)
     }
 
     static func loadSpriteSheet(slug: String) throws -> SpriteSheet {
@@ -1909,6 +2119,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 /// 경로(changePet / changeStatusSource / setEvolutionEnabled / toggleClaudeHooks
 /// 등)로 위임해, 어느 쪽에서 바꾸든 동작·저장·메뉴바 갱신이 동일하다.
 extension AppDelegate: SettingsActionsDelegate {
+    var settingsCollectionBonus: (complete: Int, others: Int, bonus: Double) {
+        (CollectionBonus.completeCount(in: petTokens),
+         CollectionBonus.completeCount(in: petTokens, excluding: selectedPetSlug),
+         collectionBonus)
+    }
+
     var settingsPetNickname: String? { PetNames.name(for: selectedPetSlug) }
     /// 이름을 비웠을 때 돌아갈 이름. 보이는 쪽(진화형)이어야 안내가 맞는다.
     var settingsPetSpeciesName: String { Self.koreanPetName(displayedPetSlug) }
@@ -2002,7 +2218,7 @@ extension AppDelegate: SettingsActionsDelegate {
 
     var settingsOrderedPets: [(slug: String, name: String)] {
         Self.availablePetSlugs.compactMap { slug in
-            petDisplayNames[slug].map { (slug, $0) }
+            petDisplayNames[slug] != nil ? (slug, petPickerLabel(forBase: slug)) : nil
         }
     }
 
@@ -2012,7 +2228,7 @@ extension AppDelegate: SettingsActionsDelegate {
         Self.PetCategory.allCases.map { cat in
             let pets = Self.availablePetSlugs
                 .filter { Self.category(of: $0) == cat }
-                .compactMap { slug in petDisplayNames[slug].map { (slug, $0) } }
+                .compactMap { slug in petDisplayNames[slug] != nil ? (slug, petPickerLabel(forBase: slug)) : nil }
             return (cat.displayName, pets)
         }
     }

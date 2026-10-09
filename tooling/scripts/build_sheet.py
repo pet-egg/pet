@@ -47,6 +47,11 @@ FRAME_DEFAULT = 200
 FRAME_BY_PET = {
     "charmeleon": 360, "charizard": 400,
     "wartortle": 280, "blastoise": 400,
+    # 미뇽 계열도 파이리 계열처럼 진화할수록 커지게 한다. 예전에는 셋 다 기본 프레임이라
+    # 진화해도 1.03배·1.21배로 거의 그대로였다.
+    # 프레임은 내용보다 70~80px 크게 — 리자드·리자몽과 같은 여백이다. 더 크게 잡으면
+    # 펫 주변 투명 영역만 늘어 창이 쓸데없이 커진다.
+    "dragonair": 280, "dragonite": 320,
 }
 FRAME = FRAME_DEFAULT
 SPRITE_TARGET = SPRITE_TARGET_DEFAULT if False else (170, 150)
@@ -66,6 +71,9 @@ SPRITE_TARGET_DEFAULT = (170, 150)
 SPRITE_TARGET_BY_PET = {
     "charmeleon": (340, 290), "charizard": (360, 370),
     "wartortle": (250, 235), "blastoise": (360, 340),
+    # 파이리 계열의 높이 비(리자드 1.67배·리자몽 1.93배)에 맞춘 값. 정수 배율이라 정확히는
+    # 못 맞추고, 실측해 가장 가까운 배율이 나오도록 잡았다.
+    "dragonair": (300, 230), "dragonite": (330, 260),
 }
 ROWS_ORDER = [
     "idle", "running-right", "running-left", "waving",
@@ -96,7 +104,8 @@ FRAME_SPEC = {
     "running":       (12, 180),   # 2.5x — 작업 중
     "review":        (12, 220),   # 2.1x — 헤롱헤롱
     "fire-breath":   (10, 110),   # 5.0x — 불뿜기. 짧고 세게
-    "water-gun":     (10, 110),   # 5.0x — 물뿜기
+    "water-gun":     (10, 110),   # 5.0x — 물뿜기,
+    "hyper-beam":    (10, 110),   # 5.0x — 파괴광선. 불·물과 같은 길이·속도
 }
 COLS = max(n for n, _ in FRAME_SPEC.values())
 
@@ -114,6 +123,11 @@ SKILLS = {
     "squirtle":   {"row": "water-gun",   "effect": "water_jet.png", "mouth": (0.179, 0.360)},
     "wartortle":  {"row": "water-gun",   "effect": "water_jet.png", "mouth": (0.280, 0.340)},
     "blastoise":  {"row": "water-gun",   "effect": "water_jet.png", "mouth": (0.300, 0.400)},
+    # 미뇽 계열 — 파괴광선. 입 위치는 서있기 줄의 스프라이트(전 프레임 합집합 상자)를
+    # 확대해 5% 격자로 읽은 값이다. 잠듦 줄은 Zzz 가 합성돼 상자가 커지므로 쓰지 않는다.
+    "dratini":    {"row": "hyper-beam",  "effect": "hyper_beam.png", "mouth": (0.303, 0.431)},
+    "dragonair":  {"row": "hyper-beam",  "effect": "hyper_beam.png", "mouth": (0.411, 0.388)},
+    "dragonite":  {"row": "hyper-beam",  "effect": "hyper_beam.png", "mouth": (0.179, 0.293)},
 }
 EXTRA_ROWS = {slug: [cfg["row"]] for slug, cfg in SKILLS.items()}
 
@@ -267,25 +281,57 @@ PETS = [
         ),
     },
     {
-        "slug": "snorlax",
-        "dex_id": 143,
-        "out_dir_name": "snorlax.codex-pet",
-        "id": "snorlax-jamanbo",
-        "display_name": "잠만보 (Snorlax)",
+        # 잠만보(Snorlax) 라인의 미진화체(=메뉴 기본형). munchlax→snorlax(1진화).
+        "slug": "munchlax",
+        "dex_id": 446,
+        "out_dir_name": "munchlax.codex-pet",
+        "id": "munchlax-munchlax",
+        "display_name": "먹고자 (Munchlax)",
         "description": (
-            "Custom connor-pet build: Snorlax / 잠만보 reacts to live Orca agent/project status, "
+            "Custom connor-pet build: Munchlax / 먹고자 reacts to live Orca agent/project status, "
             "skinned as Pokémon status conditions — blocked/waiting=Freeze, done=Infatuation, "
             "nothing=Sleep, working=running (unchanged). Built from PokeAPI gen5 battle sprites."
         ),
     },
     {
+        # 이제 먹고자의 1차 진화형(stage 1) — 메뉴 기본형이 아니라 진화로만 등장하므로
+        # Orca 번들에서 뺀다(orca_bundle=False).
+        "slug": "snorlax",
+        "dex_id": 143,
+        "out_dir_name": "snorlax.codex-pet",
+        "id": "snorlax-jamanbo",
+        "display_name": "잠만보 (Snorlax)",
+        "orca_bundle": False,
+        "description": (
+            "Custom connor-pet build (evolved form): Snorlax / 잠만보 reacts to live Orca agent/project status, "
+            "skinned as Pokémon status conditions — blocked/waiting=Freeze, done=Infatuation, "
+            "nothing=Sleep, working=running (unchanged). Built from PokeAPI gen5 battle sprites."
+        ),
+    },
+    {
+        # 팬텀(Gengar) 라인의 미진화체(=메뉴 기본형). gastly→haunter→gengar.
+        "slug": "gastly",
+        "dex_id": 92,
+        "out_dir_name": "gastly.codex-pet",
+        "id": "gastly-gastly",
+        "display_name": "고오스 (Gastly)",
+        "description": (
+            "Custom connor-pet build: Gastly / 고오스 reacts to live Orca agent/project status, "
+            "skinned as Pokémon status conditions — blocked/waiting=Freeze, done=Infatuation, "
+            "nothing=Sleep, working=running (unchanged). Built from PokeAPI gen5 battle sprites."
+        ),
+    },
+    {
+        # 이제 고오스의 2차 진화형(stage 2) — 메뉴 기본형이 아니라 진화로만 등장하므로
+        # Orca 번들에서 뺀다(orca_bundle=False).
         "slug": "gengar",
         "dex_id": 94,
         "out_dir_name": "gengar.codex-pet",
         "id": "gengar-pantom",
         "display_name": "팬텀 (Gengar)",
+        "orca_bundle": False,
         "description": (
-            "Custom connor-pet build: Gengar / 팬텀 reacts to live Orca agent/project status, "
+            "Custom connor-pet build (evolved form): Gengar / 팬텀 reacts to live Orca agent/project status, "
             "skinned as Pokémon status conditions — blocked/waiting=Freeze, done=Infatuation, "
             "nothing=Sleep, working=running (unchanged). Built from PokeAPI gen5 battle sprites."
         ),
@@ -303,15 +349,32 @@ PETS = [
         ),
     },
     {
+        # 피카츄 라인의 미진화체(=메뉴에 뜨는 기본형). 피카츄와 같은 PMD 파이프라인
+        # (build_pmd_pet, dex 0172)으로 구워 아트 스타일을 맞춘다.
+        "slug": "pichu",
+        "dex_id": 172,
+        "out_dir_name": "pichu.codex-pet",
+        "id": "pichu-pichu",
+        "display_name": "피츄 (Pichu)",
+        "description": (
+            "Custom connor-pet build: Pichu / 피츄 reacts to live Orca agent/project status, "
+            "skinned as Pokémon status conditions — blocked/waiting=Freeze, done=Infatuation, "
+            "nothing=Sleep, working=running (unchanged). Built from PMDCollab PMD sprites (dex 0172)."
+        ),
+    },
+    {
+        # 이제 피츄의 1차 진화형(stage 1) — 메뉴 기본형이 아니라 진화로만 등장하므로
+        # Orca 번들에서 뺀다(orca_bundle=False). PMD 파이프라인(dex 0025)은 그대로.
         "slug": "pikachu",
         "dex_id": 25,
         "out_dir_name": "pikachu.codex-pet",
         "id": "pikachu-pikachu",
         "display_name": "피카츄 (Pikachu)",
+        "orca_bundle": False,
         "description": (
-            "Custom connor-pet build: Pikachu / 피카츄 reacts to live Orca agent/project status, "
+            "Custom connor-pet build (evolved form): Pikachu / 피카츄 reacts to live Orca agent/project status, "
             "skinned as Pokémon status conditions — blocked/waiting=Freeze, done=Infatuation, "
-            "nothing=Sleep, working=running (unchanged). Built from PokeAPI gen5 battle sprites."
+            "nothing=Sleep, working=running (unchanged). Built from PMDCollab PMD sprites (dex 0025)."
         ),
     },
     {
@@ -385,6 +448,9 @@ _EVOLUTIONS = [
     ("vaporeon", 134, "샤미드 (Vaporeon)"),
     ("dugtrio", 51, "닥트리오 (Dugtrio)"),
     ("raichu", 26, "라이츄 (Raichu)"),
+    ("haunter", 93, "고우스트 (Haunter)"),
+    ("pignite", 499, "차오꿀 (Pignite)"),
+    ("emboar", 500, "염무왕 (Emboar)"),
     ("pupitar", 247, "데기라스 (Pupitar)"),
     ("tyranitar", 248, "마기라스 (Tyranitar)"),
     ("dragonair", 148, "신뇽 (Dragonair)"),
@@ -983,10 +1049,11 @@ def compose_and_write(pet, rows, extra_manifest, row_order, frame):
 # 걷기/달리기 사이클이 안 나와서(예전 회전·스쿼시 편법의 원인) 밈 같은 종종걸음을
 # 제대로 내려면 애초에 이동 애니메이션이 있는 소스가 필요하기 때문이다.
 #
-# 출처: PMDCollab/SpriteCollab 의 0025(피카츄). 원본은 Chunsoft 의 Pokémon
-# Mystery Dungeon 게임 스프라이트(= 이미 이 저장소가 쓰는 PokeAPI gen5 처럼
-# 공식 게임에서 추출한 도트). credits.txt 상 제작자 CHUNSOFT. README 에 출처 명시.
-PMD_BASE = "https://raw.githubusercontent.com/PMDCollab/SpriteCollab/master/sprite/0025"
+# 출처: PMDCollab/SpriteCollab 의 0025(피카츄)·0172(피츄). 원본은 Chunsoft 의
+# Pokémon Mystery Dungeon 게임 스프라이트(= 이미 이 저장소가 쓰는 PokeAPI gen5
+# 처럼 공식 게임에서 추출한 도트). credits.txt 상 제작자 CHUNSOFT. README 에 출처 명시.
+# 피카츄(0025)·피츄(0172)가 같은 PMD 파이프라인을 공유하므로 도감 4자리를 인자로 받는다.
+PMD_BASE_FMT = "https://raw.githubusercontent.com/PMDCollab/SpriteCollab/master/sprite/{dex}"
 PMD_ANIMS = ["Walk", "Idle", "Sleep", "Hurt"]
 # 8방향 시트의 행 순서(PMD/SkyTemple 표준): 0=아래(정면),1=우하,2=오른쪽,3=우상,
 # 4=위(뒷모습),5=좌상,6=왼쪽,7=좌하.
@@ -995,9 +1062,10 @@ PMD_SCALE = 5          # 캐릭터 최대 높이 31px → x5=155px, 200 프레�
 PMD_FLOOR_Y = 180      # 발이 닿는 바닥선(프레임 내 y). 상태가 바뀌어도 발 위치 유지.
 
 
-def _pmd_meta():
+def _pmd_meta(dex):
     """AnimData.xml 을 받아 anim 이름 → (frame_w, frame_h, [durations]) 로."""
-    xml_path = fetch(f"{PMD_BASE}/AnimData.xml", os.path.join(CACHE_DIR, "pmd_0025_AnimData.xml"))
+    base = PMD_BASE_FMT.format(dex=dex)
+    xml_path = fetch(f"{base}/AnimData.xml", os.path.join(CACHE_DIR, f"pmd_{dex}_AnimData.xml"))
     root = ET.parse(xml_path).getroot()
     meta = {}
     for a in root.iter("Anim"):
@@ -1011,10 +1079,11 @@ def _pmd_meta():
     return meta
 
 
-def _pmd_strip(name, direction, meta):
+def _pmd_strip(name, direction, meta, dex):
     """(anim, 방향) 의 프레임 리스트와 원본 duration 리스트를 돌려준다."""
     fw, fh, durs = meta[name]
-    path = fetch(f"{PMD_BASE}/{name}-Anim.png", os.path.join(CACHE_DIR, f"pmd_0025_{name}.png"))
+    base = PMD_BASE_FMT.format(dex=dex)
+    path = fetch(f"{base}/{name}-Anim.png", os.path.join(CACHE_DIR, f"pmd_{dex}_{name}.png"))
     sheet = Image.open(path).convert("RGBA")
     d = PMD_DIR[direction]
     cols = sheet.width // fw
@@ -1044,20 +1113,20 @@ def _pmd_durs(durs, factor, floor=30):
     return [max(floor, round(d * factor)) for d in durs]
 
 
-def build_pikachu_pmd(pet):
-    """피카츄를 PMD 스프라이트로 굽는다. gen5 파이프라인과 같은 9행 포맷으로
-    맞춰 앱은 다른 펫과 똑같이 읽는다. 상태 스킨(잠듦 Zzz·얼음·헤롱헤롱 하트·실패
-    빨강 떨림)은 공용 헬퍼를 그대로 재사용한다."""
+def build_pmd_pet(pet, dex):
+    """PMD 스프라이트(도감 `dex`)로 굽는다. 피카츄(0025)·피츄(0172)가 공유한다.
+    gen5 파이프라인과 같은 9행 포맷으로 맞춰 앱은 다른 펫과 똑같이 읽는다. 상태
+    스킨(잠듦 Zzz·얼음·헤롱헤롱 하트·실패 빨강 떨림)은 공용 헬퍼를 그대로 재사용한다."""
     global FRAME
     FRAME = FRAME_DEFAULT
-    meta = _pmd_meta()
+    meta = _pmd_meta(dex)
 
-    walk_r = _pmd_prep(_pmd_strip("Walk", "right", meta)[0])
-    walk_l = _pmd_prep(_pmd_strip("Walk", "left", meta)[0])
-    walk_d = _pmd_prep(_pmd_strip("Walk", "down", meta)[0])
-    idle_d = _pmd_prep(_pmd_strip("Idle", "down", meta)[0])
-    sleep_d = _pmd_prep(_pmd_strip("Sleep", "down", meta)[0])
-    hurt_d = _pmd_prep(_pmd_strip("Hurt", "down", meta)[0])
+    walk_r = _pmd_prep(_pmd_strip("Walk", "right", meta, dex)[0])
+    walk_l = _pmd_prep(_pmd_strip("Walk", "left", meta, dex)[0])
+    walk_d = _pmd_prep(_pmd_strip("Walk", "down", meta, dex)[0])
+    idle_d = _pmd_prep(_pmd_strip("Idle", "down", meta, dex)[0])
+    sleep_d = _pmd_prep(_pmd_strip("Sleep", "down", meta, dex)[0])
+    hurt_d = _pmd_prep(_pmd_strip("Hurt", "down", meta, dex)[0])
     walk_durs = meta["Walk"][2]
     idle_durs = meta["Idle"][2]
 
@@ -1133,9 +1202,12 @@ def build_pikachu_pmd(pet):
     compose_and_write(pet, rows, {}, ROWS_ORDER, FRAME)
 
 
+_PMD_DEX_BY_SLUG = {"pikachu": "0025", "pichu": "0172"}
+
+
 def build_pet(pet):
-    if pet["slug"] == "pikachu":
-        build_pikachu_pmd(pet)
+    if pet["slug"] in _PMD_DEX_BY_SLUG:
+        build_pmd_pet(pet, _PMD_DEX_BY_SLUG[pet["slug"]])
         return
     global FRAME, SPRITE_TARGET
     FRAME = FRAME_BY_PET.get(pet["slug"], FRAME_DEFAULT)

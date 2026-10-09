@@ -22,6 +22,7 @@ WAVING = "waving"
 FAILED = "failed"
 FIRE_BREATH = "fire-breath"
 WATER_GUN = "water-gun"
+HYPER_BEAM = "hyper-beam"  # 미뇽 계열 파괴광선 — 윈도우는 아직 속성기를 재생하지 않는다
 RUNNING_RIGHT = "running-right"
 RUNNING_LEFT = "running-left"
 

@@ -69,7 +69,7 @@ final class XPDetailWindow: NSWindow {
     /// `petFrame`(화면 좌표) 바로 아래 가운데에 문구를 띄운다.
     func show(text: String, below petFrame: NSRect) {
         guard !text.isEmpty else { hide(); return }
-        label.stringValue = text
+        label.attributedStringValue = Self.attributed(text)
         // intrinsicContentSize 는 여러 줄에서 폭을 모자라게 잡아 첫 글자("E")가 잘렸다.
         // 폭을 넉넉히 주고 실제로 필요한 크기를 물어본 뒤 올림한다 — 소수점이 남으면
         // 창 프레임이 정수로 깎이면서 마지막 픽셀이 사라진다.
@@ -95,4 +95,37 @@ final class XPDetailWindow: NSWindow {
     }
 
     func hide() { orderOut(nil) }
+
+    /// 문구 전체는 흰색(+검은 그림자)이되 성별 기호만 색을 입힌다 — 수컷 `♂`=파랑,
+    /// 암컷 `♀`=분홍. 라벨 폰트/정렬/줄바꿈은 stringValue 때와 똑같이 유지한다.
+    static func attributed(_ text: String) -> NSAttributedString {
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor(calibratedWhite: 0, alpha: 0.9)
+        shadow.shadowBlurRadius = 3
+        shadow.shadowOffset = .zero
+
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        paragraph.lineBreakMode = .byClipping
+
+        let result = NSMutableAttributedString(string: text, attributes: [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 9, weight: .semibold),
+            .foregroundColor: NSColor.white,
+            .shadow: shadow,
+            .paragraphStyle: paragraph,
+        ])
+        let ns = text as NSString
+        for (symbol, gender) in [("♂", PetGender.male), ("♀", PetGender.female)] {
+            guard let color = gender.color else { continue }
+            var searchRange = NSRange(location: 0, length: ns.length)
+            while searchRange.location < ns.length {
+                let found = ns.range(of: symbol, options: [], range: searchRange)
+                if found.location == NSNotFound { break }
+                result.addAttribute(.foregroundColor, value: color, range: found)
+                let next = found.location + found.length
+                searchRange = NSRange(location: next, length: ns.length - next)
+            }
+        }
+        return result
+    }
 }
