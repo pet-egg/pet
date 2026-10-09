@@ -9,7 +9,7 @@ protocol SettingsActionsDelegate: AnyObject {
     var settingsOrderedPets: [(slug: String, name: String)] { get }
     /// 대분류(포켓몬/동물/메이플스토리)별로 묶은 펫 목록. 빈 카테고리도 포함되며
     /// 팝업에서 "준비 중"으로 노출한다.
-    var settingsPetGroups: [(category: String, pets: [(slug: String, name: String)])] { get }
+    var settingsPetGroups: [(category: String, pets: [(slug: String, name: String, hint: String?)])] { get }
     var settingsSelectedPetSlug: String { get }
     func settingsSelectPet(slug: String)
 
@@ -349,6 +349,10 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         // 붙인다. 빈 카테고리는 "(준비 중)"으로 노출해 카테고리 체계를 보여 준다.
         let popup = NSPopUpButton(frame: .zero, pullsDown: false)
         let menu = popup.menu!
+        // 카테고리 헤더·"준비 중"은 isEnabled=false 로 선택 불가로 두는데, NSMenu 기본값
+        // autoenablesItems=true 는 이 수동 설정을 무시하고 액션 유효성으로 다시 켜 버려
+        // **헤더가 선택되던 버그**가 있었다. 자동 활성화를 꺼 isEnabled 를 존중하게 한다.
+        menu.autoenablesItems = false
         var firstGroup = true
         for group in d.settingsPetGroups {
             if !firstGroup { menu.addItem(.separator()) }
@@ -370,6 +374,8 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
                     let item = NSMenuItem(title: pet.name, action: nil, keyEquivalent: "")
                     item.representedObject = pet.slug
                     item.indentationLevel = 1
+                    // 진화형은 라벨에서 빼고 호버 툴팁으로만 보여 준다(예: "진화: 차오꿀 → 염무왕").
+                    item.toolTip = pet.hint
                     menu.addItem(item)
                 }
             }

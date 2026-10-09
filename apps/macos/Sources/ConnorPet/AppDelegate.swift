@@ -913,12 +913,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return display.components(separatedBy: " (").first ?? display
     }
 
-    /// 펫 선택 피커에 보여줄 라벨. 영문 괄호는 빼고, **진화 사슬 전체를 하이픈으로 잇는다**
-    /// (예: `pichu` → "피츄-피카츄-라이츄", `ditto` → "메타몽"). 사용자가 고르는 건 언제나
-    /// 미진화 기본형이지만, 이 펫이 앞으로 어떤 모습으로 진화하는지 한눈에 보이게 한다.
+    /// 펫 선택 피커에 보여줄 라벨. 영문 괄호는 빼고 **미진화 기본형의 한글 이름만** 준다
+    /// (예: `pichu` → "피츄", `ditto` → "메타몽"). 예전엔 진화 사슬 전체를 하이픈으로
+    /// 이어 붙였지만("피츄-피카츄-라이츄"), 목록이 길고 번잡한 데다 번들에 진화형
+    /// 매니페스트가 아직 안 깔린 경우 그 자리가 slug(영문)로 새던 문제가 있었다. 지금은
+    /// 기본형만 보이고, **앞으로 어떤 모습이 되는지는 `petEvolutionHint` 로 호버 시** 뜬다.
     private func petPickerLabel(forBase base: String) -> String {
-        let chain = [base] + (Self.evolutionChains[base] ?? [])
-        return chain.map { koreanName($0) }.joined(separator: "-")
+        koreanName(base)
+    }
+
+    /// 피커 항목에 마우스를 올리면 뜨는 진화 안내(툴팁). 진화형들의 한글 이름을 "→" 로
+    /// 잇는다(예: `tepig` → "진화: 차오꿀 → 염무왕"). 진화가 없으면 nil 이라 툴팁도 없다.
+    private func petEvolutionHint(forBase base: String) -> String? {
+        let evos = Self.evolutionChains[base] ?? []
+        guard !evos.isEmpty else { return nil }
+        return "진화: " + evos.map { koreanName($0) }.joined(separator: " → ")
     }
 
     /// GitHub PR·Linear 티켓을 훑어 새로 끝난 것에 경험치를 준다.
@@ -1618,7 +1627,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     guard petDisplayNames[slug] != nil else { return nil }
                     let image = (try? Self.loadSpriteSheet(slug: slug))?
                         .resolvedAnimation(for: .idle)?.images.first
-                    return FirstRunWizard.PetOption(slug: slug, name: petPickerLabel(forBase: slug), image: image)
+                    return FirstRunWizard.PetOption(slug: slug, name: petPickerLabel(forBase: slug), image: image,
+                                                    hint: petEvolutionHint(forBase: slug))
                 }
             return FirstRunWizard.PetGroup(category: cat.displayName, pets: opts)
         }
@@ -2224,11 +2234,14 @@ extension AppDelegate: SettingsActionsDelegate {
 
     /// 대분류별로 묶은 펫 목록(포켓몬/동물/메이플스토리). 빈 카테고리도 포함해
     /// 설정 창이 "준비 중"으로 노출한다 — 카테고리 체계 자체를 보이게 하려는 것.
-    var settingsPetGroups: [(category: String, pets: [(slug: String, name: String)])] {
+    var settingsPetGroups: [(category: String, pets: [(slug: String, name: String, hint: String?)])] {
         Self.PetCategory.allCases.map { cat in
             let pets = Self.availablePetSlugs
                 .filter { Self.category(of: $0) == cat }
-                .compactMap { slug in petDisplayNames[slug] != nil ? (slug, petPickerLabel(forBase: slug)) : nil }
+                .compactMap { slug -> (String, String, String?)? in
+                    guard petDisplayNames[slug] != nil else { return nil }
+                    return (slug, petPickerLabel(forBase: slug), petEvolutionHint(forBase: slug))
+                }
             return (cat.displayName, pets)
         }
     }
