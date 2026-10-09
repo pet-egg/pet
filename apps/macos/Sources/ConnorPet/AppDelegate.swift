@@ -240,10 +240,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // 않지만, 메뉴 자체가 없으면 설정 창 입력란에 붙여넣기가 안 된다.
         EditMenu.install()
 
+        // 번들에서 못 읽은 펫은 petDisplayNames 에 안 담겨 **선택 목록에서 조용히 빠진다.**
+        // 가장 흔한 원인은 리소스 미러(Resources/pets, git 미추적 생성물)가 낡은 것 —
+        // 새 기본형(예: 47caf7d 의 munchlax/gastly/pichu)이 미러에 없어 로드 실패한다.
+        // `swift run` 은 sync 를 자동 실행하지 않으므로(make_app.sh·CI 만 함), 이때 펫이
+        // 말없이 사라져 원인을 찾기 어렵다. 조용히 버리지 말고 실행 가능한 안내를 남긴다.
+        var failedToLoad: [String] = []
         for slug in Self.availablePetSlugs {
             if let sheet = try? Self.loadSpriteSheet(slug: slug) {
                 petDisplayNames[slug] = sheet.manifest.displayName ?? slug
+            } else {
+                failedToLoad.append(slug)
             }
+        }
+        if !failedToLoad.isEmpty {
+            NSLog("connor-pet: ⚠️ 펫 \(failedToLoad) 를 번들에서 못 읽어 선택 목록에서 빠집니다. "
+                + "리소스 미러가 낡았을 수 있어요 — `python3 tooling/scripts/sync_assets.py` 를 돌린 뒤 다시 빌드하세요.")
         }
 
         selectedPetSlug = Self.savedPetSlug(

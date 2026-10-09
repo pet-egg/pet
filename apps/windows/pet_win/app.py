@@ -77,6 +77,15 @@ class PetWindow(QWidget):
         self._hovering = False
         self._drag_offset = None
 
+        # 선택 가능한 펫 중 에셋이 없는 것은 선택해도 그림이 안 뜬다. (mac 과 달리 윈도우는
+        # 미러 없이 assets/pets 를 직접 읽어 picker 에서 사라지진 않지만) 원인을 찾기 쉽게
+        # 빠진 펫을 한 줄로 남긴다 — mac AppDelegate 의 미동기화 경고와 짝.
+        missing = [s for s in petmeta.AVAILABLE_PET_SLUGS
+                   if not os.path.isfile(os.path.join(resources.pet_dir(s), "pet.json"))]
+        if missing:
+            print(f"pet: ⚠️ 펫 {missing} 의 에셋을 찾지 못했습니다 — assets/pets 를 확인하세요.",
+                  file=sys.stderr)
+
         # 프레임 타이머는 _load_display_pet 이 _schedule_frame 을 부르기 전에 있어야 한다.
         self.frame_timer = QTimer(self)
         self.frame_timer.setSingleShot(True)
