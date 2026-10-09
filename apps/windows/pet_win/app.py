@@ -163,11 +163,19 @@ class PetWindow(QWidget):
         return name
 
     def _pet_picker_label(self, base):
-        """펫 선택 피커 라벨 — 영문 괄호를 빼고 진화 사슬 전체를 하이픈으로 잇는다
-        (예: pichu → "피츄-피카츄-라이츄", ditto → "메타몽"). 고르는 건 언제나
-        미진화 기본형이지만 앞으로 어떻게 진화하는지 한눈에 보이게 한다."""
-        chain = [base] + petmeta.EVOLUTION_CHAINS.get(base, [])
-        return "-".join(self._korean_name(s) for s in chain)
+        """펫 선택 피커 라벨 — 영문 괄호를 빼고 **미진화 기본형의 한글 이름만** 준다
+        (예: pichu → "피츄", ditto → "메타몽"). 예전엔 진화 사슬 전체를 하이픈으로
+        이어 붙였으나 목록이 번잡해 기본형만 보이게 하고, 앞으로 어떤 모습이 되는지는
+        `_pet_evolution_hint` 로 호버(툴팁) 시 뜬다. (mac petPickerLabel 과 짝)"""
+        return self._korean_name(base)
+
+    def _pet_evolution_hint(self, base):
+        """피커 항목 호버 시 뜨는 진화 안내(툴팁). 진화형 한글 이름을 "→" 로 잇는다
+        (예: tepig → "진화: 차오꿀 → 염무왕"). 진화가 없으면 빈 문자열."""
+        evos = petmeta.EVOLUTION_CHAINS.get(base, [])
+        if not evos:
+            return ""
+        return "진화: " + " → ".join(self._korean_name(s) for s in evos)
 
     def _current_stage(self):
         if not self.evolution_enabled:
@@ -335,11 +343,15 @@ class PetWindow(QWidget):
         menu = QMenu(self)
 
         pet_menu = menu.addMenu("펫 선택")
+        pet_menu.setToolTipsVisible(True)   # 진화형 호버 툴팁이 보이도록(기본 꺼짐)
         group = QActionGroup(self)
         group.setExclusive(True)
         for slug in petmeta.AVAILABLE_PET_SLUGS:
             name = self._pet_picker_label(slug)
             act = QAction(name, self, checkable=True)
+            hint = self._pet_evolution_hint(slug)
+            if hint:
+                act.setToolTip(hint)      # 호버 시 진화형 안내
             act.setChecked(slug == self.base_slug)
             act.triggered.connect(lambda _=False, s=slug: self.change_pet(s))
             group.addAction(act)

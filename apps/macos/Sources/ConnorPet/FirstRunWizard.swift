@@ -13,7 +13,7 @@ import AppKit
 /// the user dismissed (Esc) before choosing, in which case the caller keeps its
 /// default.
 enum FirstRunWizard {
-    struct PetOption { let slug: String; let name: String; let image: NSImage? }
+    struct PetOption { let slug: String; let name: String; let image: NSImage?; var hint: String? = nil }
     /// 펫 대분류 한 묶음(포켓몬/동물/메이플스토리). 마법사 1단계가 이 그룹별로
     /// 헤더 + 썸네일 그리드를 그린다. 아직 펫이 없는 그룹은 "준비 중"으로 나온다.
     struct PetGroup { let category: String; let pets: [PetOption] }
@@ -132,6 +132,7 @@ private final class FirstRunWizardController: NSObject {
                 let by = y - CGFloat(row + 1) * cell.height
                 let button = WizardButton(frame: NSRect(x: x, y: by, width: cell.width, height: cell.height))
                 button.configureCell(image: pet.image, title: pet.name)
+                button.toolTip = pet.hint   // 호버 시 진화형 안내(예: "진화: 차오꿀 → 염무왕")
                 button.tag = tag
                 tag += 1
                 button.target = self
