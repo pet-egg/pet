@@ -935,10 +935,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     /// 피커 항목에 마우스를 올리면 뜨는 진화 안내(툴팁). 진화형들의 한글 이름을 "→" 로
-    /// 잇는다(예: `tepig` → "진화: 차오꿀 → 염무왕"). 진화가 없으면 nil 이라 툴팁도 없다.
-    private func petEvolutionHint(forBase base: String) -> String? {
+    /// 잇는다(예: `tepig` → "진화: 차오꿀 → 염무왕"). 진화가 없으면 "진화 없음"을 돌려
+    /// 호버 시에도 안내가 뜨게 한다(메타몽·토게피·비숑·핑크빈).
+    private func petEvolutionHint(forBase base: String) -> String {
         let evos = Self.evolutionChains[base] ?? []
-        guard !evos.isEmpty else { return nil }
+        guard !evos.isEmpty else { return "진화 없음" }
         return "진화: " + evos.map { koreanName($0) }.joined(separator: " → ")
     }
 

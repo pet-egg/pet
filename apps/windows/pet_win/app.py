@@ -180,10 +180,11 @@ class PetWindow(QWidget):
 
     def _pet_evolution_hint(self, base):
         """피커 항목 호버 시 뜨는 진화 안내(툴팁). 진화형 한글 이름을 "→" 로 잇는다
-        (예: tepig → "진화: 차오꿀 → 염무왕"). 진화가 없으면 빈 문자열."""
+        (예: tepig → "진화: 차오꿀 → 염무왕"). 진화가 없으면 "진화 없음"을 돌려
+        호버 시에도 안내가 뜨게 한다(메타몽·토게피·비숑·핑크빈). (mac petEvolutionHint 과 짝)"""
         evos = petmeta.EVOLUTION_CHAINS.get(base, [])
         if not evos:
-            return ""
+            return "진화 없음"
         return "진화: " + " → ".join(self._korean_name(s) for s in evos)
 
     def _current_stage(self):
@@ -358,9 +359,7 @@ class PetWindow(QWidget):
         for slug in petmeta.AVAILABLE_PET_SLUGS:
             name = self._pet_picker_label(slug)
             act = QAction(name, self, checkable=True)
-            hint = self._pet_evolution_hint(slug)
-            if hint:
-                act.setToolTip(hint)      # 호버 시 진화형 안내
+            act.setToolTip(self._pet_evolution_hint(slug))   # 호버 시 진화형/진화 없음 안내
             act.setChecked(slug == self.base_slug)
             act.triggered.connect(lambda _=False, s=slug: self.change_pet(s))
             group.addAction(act)
