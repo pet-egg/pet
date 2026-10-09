@@ -15,6 +15,7 @@ import json
 import math
 import os
 import sys
+import time
 import urllib.request
 import xml.etree.ElementTree as ET
 
@@ -446,6 +447,17 @@ _EVOLUTIONS = [
     ("combusken", 256, "영뿔 (Combusken)"),
     ("blaziken", 257, "번치코 (Blaziken)"),
     ("vaporeon", 134, "샤미드 (Vaporeon)"),
+    # 이브이 분기 진화(8종). 사용자가 2억 토큰 도달 시 말풍선에서 하나를 고른다.
+    ("jolteon", 135, "쥬피썬더 (Jolteon)"),
+    ("flareon", 136, "부스터 (Flareon)"),
+    ("espeon", 196, "에브이 (Espeon)"),
+    ("umbreon", 197, "블래키 (Umbreon)"),
+    ("leafeon", 470, "리피아 (Leafeon)"),
+    ("glaceon", 471, "글레이시아 (Glaceon)"),
+    ("sylveon", 700, "님피아 (Sylveon)"),
+    # 토게피 진화 사슬(토게피 → 토게틱 → 토게키스).
+    ("togetic", 176, "토게틱 (Togetic)"),
+    ("togekiss", 468, "토게키스 (Togekiss)"),
     ("dugtrio", 51, "닥트리오 (Dugtrio)"),
     ("raichu", 26, "라이츄 (Raichu)"),
     ("haunter", 93, "고우스트 (Haunter)"),
@@ -472,13 +484,24 @@ for _slug, _dex, _name in _EVOLUTIONS:
     })
 
 
-def fetch(url, dest):
+def fetch(url, dest, retries=5):
     if os.path.exists(dest):
         return dest
     os.makedirs(os.path.dirname(dest), exist_ok=True)
     print(f"downloading {url}")
-    urllib.request.urlretrieve(url, dest)
-    return dest
+    # raw.githubusercontent 는 연속 요청을 간헐적으로 404/429 로 던진다(스로틀). 캐시가
+    # 비어 있어 받아야 하는 스프라이트는 백오프로 몇 번 재시도한다.
+    last = None
+    for attempt in range(retries):
+        try:
+            urllib.request.urlretrieve(url, dest)
+            return dest
+        except Exception as e:  # noqa: BLE001
+            last = e
+            if os.path.exists(dest):
+                os.remove(dest)
+            time.sleep(1.5 * (attempt + 1))
+    raise last
 
 
 def load_frames(path):

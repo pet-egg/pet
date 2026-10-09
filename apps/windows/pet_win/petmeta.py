@@ -20,7 +20,9 @@ EVOLUTION_CHAINS = {
     "geodude": ["graveler", "golem"],
     "chikorita": ["bayleef", "meganium"],
     "torchic": ["combusken", "blaziken"],
-    "eevee": ["vaporeon"],
+    # 이브이는 분기 진화(8종) — 고정 사슬이 없다. 사용자가 2억 토큰 도달 시 고른 진화형을
+    # 저장하고 display_slug 가 eevee_choice 로 받는다(미선택이면 이브이 유지). EEVEELUTION_SLUGS 참고.
+    "eevee": [],
     "diglett": ["dugtrio"],
     "pichu": ["pikachu", "raichu"],
     "gastly": ["haunter", "gengar"],
@@ -29,13 +31,24 @@ EVOLUTION_CHAINS = {
     "larvitar": ["pupitar", "tyranitar"],
     "dratini": ["dragonair", "dragonite"],
     "ditto": [],
-    "togepi": [],
+    "togepi": ["togetic", "togekiss"],
     "pinkbean": [],
 }
 
+# 이브이 분기 진화 후보 8종(도감순). mac AppDelegate.eeveelutionSlugs 와 동일 순서.
+EEVEELUTION_SLUGS = ["vaporeon", "jolteon", "flareon", "espeon",
+                     "umbreon", "leafeon", "glaceon", "sylveon"]
 
-def display_slug(base_slug: str, stage: int) -> str:
-    """기본형 + 진화단계 → 실제로 화면에 그릴 슬러그."""
+
+def display_slug(base_slug: str, stage: int, eevee_choice: str | None = None) -> str:
+    """기본형 + 진화단계 → 실제로 화면에 그릴 슬러그.
+
+    이브이는 분기 진화라 고정 사슬 대신 eevee_choice(고른 진화형)를 한 칸 사슬로 쓴다 —
+    미선택이면 스테이지가 올라도 이브이를 유지(사용자가 고를 때까지). (mac displaySlugForTest 과 짝)"""
+    if base_slug == "eevee":
+        if stage <= 0 or not eevee_choice:
+            return base_slug
+        return eevee_choice
     if stage <= 0:
         return base_slug
     chain = EVOLUTION_CHAINS.get(base_slug, [])

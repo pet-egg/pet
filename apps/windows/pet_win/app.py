@@ -56,6 +56,10 @@ class PetWindow(QWidget):
         self.base_slug = self.settings.value("selectedPetSlug", "totodile")
         if self.base_slug not in petmeta.AVAILABLE_PET_SLUGS:
             self.base_slug = petmeta.AVAILABLE_PET_SLUGS[0]
+        # 이브이 분기 진화에서 사용자가 고른 진화형(slug). 미선택이면 None → 이브이 유지.
+        ev = self.settings.value("eeveelutionChoice", "", type=str)
+        self.eevee_choice = ev if ev in petmeta.EEVEELUTION_SLUGS else None
+        self._eevee_prompt_shown = False   # 진화 알림(트레이 풍선)을 한 번만 띄우기 위한 플래그
         self.evolution_enabled = self.settings.value(
             "evolutionEnabled", False, type=bool)
         self.bar_always = self.settings.value("barAlwaysVisible", False, type=bool)
@@ -181,7 +185,11 @@ class PetWindow(QWidget):
     def _pet_evolution_hint(self, base):
         """피커 항목 호버 시 뜨는 진화 안내(툴팁). 진화형 한글 이름을 "→" 로 잇는다
         (예: tepig → "진화: 차오꿀 → 염무왕"). 진화가 없으면 "진화 없음"을 돌려
-        호버 시에도 안내가 뜨게 한다(메타몽·토게피·비숑·핑크빈). (mac petEvolutionHint 과 짝)"""
+        호버 시에도 안내가 뜨게 한다(메타몽·비숑·핑크빈). (mac petEvolutionHint 과 짝)"""
+        if base == "eevee":
+            if self.eevee_choice:
+                return "진화: " + self._korean_name(self.eevee_choice)
+            return "진화: 8종 중 선택 (경험치가 차면 고르기)"
         evos = petmeta.EVOLUTION_CHAINS.get(base, [])
         if not evos:
             return "진화 없음"
@@ -195,7 +203,7 @@ class PetWindow(QWidget):
     def _load_display_pet(self):
         """base_slug + 진화단계로 실제 표시 슬러그를 정하고 시트를 로드."""
         stage = self._current_stage()
-        slug = petmeta.display_slug(self.base_slug, stage)
+        slug = petmeta.display_slug(self.base_slug, stage, self.eevee_choice)
         if slug == self.current_display_slug and self.sheet is not None:
             return
         try:
@@ -246,9 +254,45 @@ class PetWindow(QWidget):
                 self.pet_tokens.get(self.base_slug, 0.0) + result.gained_tokens)
             if self.evolution_enabled:
                 self._load_display_pet()  # 단계가 올랐으면 진화형으로 교체
+                self._maybe_prompt_eevee()
         self._set_animation(result.animation)
         if self.bar_always or self._hovering:
             self.update()
+
+    # ── 이브이 분기 진화 ───────────────────────────────────────
+    def _maybe_prompt_eevee(self):
+        """이브이가 2억 토큰(스테이지 1)에 도달했는데 아직 진화형을 안 골랐으면,
+        트레이 풍선으로 한 번 알린다(갑작스러운 모달 대신). 풍선을 누르면 선택창이 뜬다."""
+        if (self.base_slug != "eevee" or self.eevee_choice
+                or self._eevee_prompt_shown):
+            return
+        if self._current_stage() < 1:
+            return
+        self._eevee_prompt_shown = True
+        if self._tray is not None:
+            self._tray.showMessage(
+                "이브이가 진화할 수 있어요!",
+                "여기(또는 트레이 메뉴 '이브이 진화형')를 눌러 8종 중 하나를 골라줘.",
+                QSystemTrayIcon.Information, 10000)
+
+    def set_eevee_choice(self, slug):
+        """고른 이브이 진화형을 저장하고 즉시 반영한다."""
+        if slug not in petmeta.EEVEELUTION_SLUGS:
+            return
+        self.eevee_choice = slug
+        self.settings.setValue("eeveelutionChoice", slug)
+        self._load_display_pet()
+        self.update()
+
+    def open_eevee_chooser(self):
+        """온보딩식 8종 선택창(그리드)을 띄운다. 트레이 풍선 클릭/메뉴에서 호출.
+        풍선 클릭은 업데이트 알림 등 다른 풍선과도 공유되므로 이브이일 때만 연다."""
+        if self.base_slug != "eevee":
+            return
+        from .eevee_chooser import EeveelutionChooser
+        dlg = EeveelutionChooser(self._korean_name, parent=None)
+        if dlg.exec() and dlg.chosen:
+            self.set_eevee_choice(dlg.chosen)
 
     # ── 그리기 ─────────────────────────────────────────────────
     def paintEvent(self, event):
@@ -365,6 +409,18 @@ class PetWindow(QWidget):
             group.addAction(act)
             pet_menu.addAction(act)
 
+        # 이브이를 고른 경우에만: 분기 진화형(8종) 선택 서브메뉴.
+        if self.base_slug == "eevee":
+            evo_menu = menu.addMenu("이브이 진화형")
+            fgroup = QActionGroup(self)
+            fgroup.setExclusive(True)
+            for slug in petmeta.EEVEELUTION_SLUGS:
+                fa = QAction(self._korean_name(slug), self, checkable=True)
+                fa.setChecked(slug == self.eevee_choice)
+                fa.triggered.connect(lambda _=False, s=slug: self.set_eevee_choice(s))
+                fgroup.addAction(fa)
+                evo_menu.addAction(fa)
+
         menu.addSeparator()
         evo = QAction("진화 사용", self, checkable=True)
         evo.setChecked(self.evolution_enabled)
@@ -403,6 +459,10 @@ class PetWindow(QWidget):
         self.settings.setValue("selectedPetSlug", slug)
         self._resolve_gender(slug)  # 새로 고른 펫도 부화 시 성별 배정
         self._load_display_pet()
+        self._maybe_prompt_eevee()  # 이브이로 바꿨고 이미 스테이지1이면 안내
+        # 이브이 진화형 서브메뉴가 base 에 따라 생겼다 사라지므로 트레이 메뉴를 다시 그린다.
+        if self._tray is not None:
+            self._tray.setContextMenu(self._build_menu())
 
     def toggle_evolution(self, checked):
         self.evolution_enabled = checked
@@ -496,6 +556,8 @@ def main():
     tray = QSystemTrayIcon(tray_icon, app)
     tray.setToolTip("pet — 데스크톱 펫")
     tray.activated.connect(lambda reason: win.raise_())
+    # 이브이 진화 알림 풍선을 누르면 8종 선택창을 연다(갑작스러운 모달 대신 풍선→클릭).
+    tray.messageClicked.connect(win.open_eevee_chooser)
     tray.show()
     # 트레이 참조 유지(GC 방지).
     win._tray = tray
