@@ -60,13 +60,33 @@ func runEvolutionXPSelfTest() -> Never {
         ("gastly", 1, "haunter"), ("gastly", 2, "gengar"),
         ("munchlax", 1, "snorlax"), ("munchlax", 2, "snorlax"),   // 1진화 — stage2 여도 캡
         ("tepig", 1, "pignite"), ("tepig", 2, "emboar"),
+        ("togepi", 1, "togetic"), ("togepi", 2, "togekiss"),       // 토게피 사슬 추가
         ("ditto", 2, "ditto"),                                     // 무진화 — 항상 기본형
     ]
     for c in cases {
         let got = AppDelegate.displaySlugForTest(base: c.base, stage: c.stage)
         guard got == c.want else { fail("표시형 틀림: \(c.base) stage \(c.stage) → \(got), \(c.want) 여야 한다") }
     }
-    print("[selftest] 진화 사슬: pichu·gastly·munchlax·tepig·ditto 표시형 매핑 정상")
+    print("[selftest] 진화 사슬: pichu·gastly·munchlax·tepig·togepi·ditto 표시형 매핑 정상")
+
+    // ── 4) 이브이 분기 진화 ──
+    // 고른 진화형이 없으면 스테이지가 올라도 이브이를 유지(사용자가 말풍선에서 고를 때까지).
+    // 고르면 그 진화형으로. 8종 각각이 역매핑에서 1단계로 잡혀야 대전 파워도 맞는다.
+    guard AppDelegate.displaySlugForTest(base: "eevee", stage: 2, eeveeChoice: nil) == "eevee" else {
+        fail("이브이: 미선택이면 스테이지가 올라도 이브이여야 한다")
+    }
+    guard AppDelegate.displaySlugForTest(base: "eevee", stage: 0, eeveeChoice: "jolteon") == "eevee" else {
+        fail("이브이: 선택해도 stage 0 이면 이브이여야 한다")
+    }
+    for forme in AppDelegate.eeveelutionSlugs {
+        guard AppDelegate.displaySlugForTest(base: "eevee", stage: 1, eeveeChoice: forme) == forme else {
+            fail("이브이 선택형 표시 틀림: \(forme)")
+        }
+        guard AppDelegate.stage(ofDisplaySlug: forme) == 1 else {
+            fail("이브이 진화형 역매핑 틀림(1단계 아님): \(forme)")
+        }
+    }
+    print("[selftest] 이브이 분기 진화: 미선택 유지 + 8종 선택/역매핑 정상")
 
     print("SELFTEST PASS")
     exit(0)

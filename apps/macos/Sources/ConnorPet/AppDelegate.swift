@@ -57,6 +57,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     //     말풍선(challengeBubble)만 10초 띄우고, 눌러야 예전 수락/거절 모달이 뜬다.
     private var challengeBubble: ChallengeBubbleWindow?
     private var challengeCountdown: ChallengeCountdownWindow?
+    // 이브이가 2억 토큰(스테이지1)에 도달했는데 아직 진화형을 안 골랐을 때 펫 위에 뜨는
+    // 클릭-가능 "✨ 진화!" 말풍선. 누르면 온보딩식 8종 선택창이 뜬다. 세션당 한 번만.
+    private var eeveeBubble: ChallengeBubbleWindow?
+    private var eeveePromptShown = false
     // 노려보기를 받았을 때 펫 옆에 뜨는 작은 말풍선(펫 도트 + 문구). 누르면 얼굴이
     // 큼직하게 뜨는 모달로 이어진다. 대전 신청 말풍선과 같은 클릭-가능 패널이다.
     private var stareBubble: StareBubbleWindow?
@@ -188,7 +192,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         "geodude": ["graveler", "golem"],
         "chikorita": ["bayleef", "meganium"],
         "torchic": ["combusken", "blaziken"],
-        "eevee": ["vaporeon"],
+        // 이브이는 분기 진화(8종)라 고정 사슬이 없다 — 사용자가 2억 토큰 도달 시
+        // 말풍선에서 고른 진화형을 `eeveeChoice` 에 저장하고, displaySlug 가 그걸 사슬로
+        // 쓴다(미선택이면 빈 사슬 → 이브이 유지). eeveelutionSlugs 참고.
+        "eevee": [],
         "diglett": ["dugtrio"],
         "pichu": ["pikachu", "raichu"],
         "gastly": ["haunter", "gengar"],
@@ -197,9 +204,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         "larvitar": ["pupitar", "tyranitar"],
         "dratini": ["dragonair", "dragonite"],
         "ditto": [],
-        "togepi": [],
+        "togepi": ["togetic", "togekiss"],
         "pinkbean": [],
     ]
+
+    /// 이브이 분기 진화 후보 8종(도감순). 사용자가 2억 토큰 도달 시 이 중 하나를 고른다.
+    /// 분기라 `evolutionChains["eevee"]` 는 비어 있고, 고른 값은 `eeveeChoice` 에 저장돼
+    /// displaySlug 가 한 칸짜리 사슬처럼 쓴다. 이름은 각 slug 의 pet.json displayName.
+    static let eeveelutionSlugs = ["vaporeon", "jolteon", "flareon", "espeon",
+                                   "umbreon", "leafeon", "glaceon", "sylveon"]
 
     // Whether the pet evolves at all (menu toggle). When off it stays the base
     // form regardless of XP. Default off.
@@ -395,6 +408,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         celebrationGuests = CelebrationGuestsWindow()
         xpDetailWindow = XPDetailWindow()
         challengeBubble = ChallengeBubbleWindow()
+        eeveeBubble = ChallengeBubbleWindow()
         challengeCountdown = ChallengeCountdownWindow()
         stareBubble = StareBubbleWindow()
         loadSkillEffect(for: sheet)
@@ -438,6 +452,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         // 디버그 전용: 설정창 레이아웃을 PNG 로 떠서 확인하고 곧장 종료한다.
+        if let path = ProcessInfo.processInfo.environment["CONNORPET_DEBUG_EEVEE"] {
+            let options: [FirstRunWizard.PetOption] = Self.eeveelutionSlugs.map { slug in
+                let image = (try? Self.loadSpriteSheet(slug: slug))?
+                    .resolvedAnimation(for: .idle)?.images.first
+                return FirstRunWizard.PetOption(slug: slug, name: koreanName(slug), image: image)
+            }
+            FirstRunWizard.debugRenderEeveelution(options: options, to: path)
+            DispatchQueue.main.async { NSApp.terminate(nil) }
+            return
+        }
         if let path = ProcessInfo.processInfo.environment["CONNORPET_DEBUG_SETTINGS"] {
             let controller = SettingsWindowController()
             controller.delegate = self
@@ -935,10 +959,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     /// 피커 항목에 마우스를 올리면 뜨는 진화 안내(툴팁). 진화형들의 한글 이름을 "→" 로
-    /// 잇는다(예: `tepig` → "진화: 차오꿀 → 염무왕"). 진화가 없으면 nil 이라 툴팁도 없다.
-    private func petEvolutionHint(forBase base: String) -> String? {
+    /// 잇는다(예: `tepig` → "진화: 차오꿀 → 염무왕"). 진화가 없으면 "진화 없음"을 돌려
+    /// 호버 시에도 안내가 뜨게 한다(메타몽·토게피·비숑·핑크빈).
+    private func petEvolutionHint(forBase base: String) -> String {
+        // 이브이는 분기 진화 — 고른 진화형이 있으면 그걸, 없으면 8종 중 선택임을 알린다.
+        if base == "eevee" {
+            if let forme = Self.savedEeveeChoice() { return "진화: \(koreanName(forme))" }
+            return "진화: 8종 중 선택 (경험치가 차면 고르기)"
+        }
         let evos = Self.evolutionChains[base] ?? []
-        guard !evos.isEmpty else { return nil }
+        guard !evos.isEmpty else { return "진화 없음" }
         return "진화: " + evos.map { koreanName($0) }.joined(separator: " → ")
     }
 
@@ -1570,6 +1600,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         savePetTokens()
 
         selectedPetSlug = slug
+        eeveePromptShown = false   // 이브이로 바꾸면 (아직 미선택일 때) 다시 안내할 수 있게
+        eeveeBubble?.hide()
         // 펫마다 경험치가 다르므로 막대와 진화 단계를 그 펫 기준으로 다시 잡는다.
         currentPercent = XPModel.percent(tokens: petTokens[slug] ?? 0)
         applyStage()
@@ -1823,6 +1855,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             currentStage = stage
             refreshDisplayedPet()
         }
+        maybePromptEeveeEvolution()
+    }
+
+    /// 이브이가 2억 토큰(스테이지1)에 도달했는데 아직 진화형을 안 골랐으면, 펫 위에
+    /// 클릭-가능 "✨ 진화!" 말풍선을 띄운다(갑작스러운 모달 대신 — CLAUDE.md 규칙).
+    /// 누르면 온보딩식 8종 선택창(presentEeveeChooser). 세션당 한 번만 띄운다.
+    private func maybePromptEeveeEvolution() {
+        guard selectedPetSlug == "eevee", evolutionEnabled, currentStage >= 1,
+              Self.savedEeveeChoice() == nil, !eeveePromptShown,
+              let petFrame = window?.frame else { return }
+        eeveePromptShown = true
+        eeveeBubble?.setText("✨ 진화!")
+        eeveeBubble?.onClick = { [weak self] in self?.presentEeveeChooser() }
+        eeveeBubble?.show(above: petFrame, duration: 60) { }
+    }
+
+    /// 온보딩과 같은 다크 카드 그리드로 8종 진화형을 보여 주고, 고른 진화형을 저장·반영한다.
+    private func presentEeveeChooser() {
+        let options: [FirstRunWizard.PetOption] = Self.eeveelutionSlugs.compactMap { slug in
+            let image = (try? Self.loadSpriteSheet(slug: slug))?
+                .resolvedAnimation(for: .idle)?.images.first
+            return FirstRunWizard.PetOption(slug: slug, name: koreanName(slug), image: image)
+        }
+        guard let chosen = FirstRunWizard.chooseEeveelution(options: options) else { return }
+        Self.saveEeveeChoice(chosen)
+        currentDisplaySlug = ""          // 강제 교체(선택 즉시 진화형으로)
+        refreshDisplayedPet()
+        petView?.enqueueCelebration("\(koreanName(chosen)) 진화!", style: .reward)
     }
 
     /// Picks the sprite to show from the user's base pet + current evolution
@@ -1876,6 +1936,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// 상대의 단계는 이렇게 역으로 알아낸다 — 메시지에는 slug 만 오고 단계는 오지
     /// 않는다. 진화 사슬에서 몇 번째인지가 곧 단계다.
     static func stage(ofDisplaySlug slug: String) -> Int {
+        // 이브이 진화형은 모두 1단계(이브이→진화형 한 칸). 고정 사슬에 없으므로 따로 본다.
+        if eeveelutionSlugs.contains(slug) { return 1 }
         for (_, chain) in evolutionChains {
             if let index = chain.firstIndex(of: slug) { return index + 1 }
         }
@@ -1883,12 +1945,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func displaySlug(base: String, stage: Int) -> String {
-        Self.displaySlugForTest(base: base, stage: stage)
+        Self.displaySlugForTest(base: base, stage: stage, eeveeChoice: Self.savedEeveeChoice())
     }
 
     /// `displaySlug` 의 순수 버전(상태에 의존하지 않음) — 셀프테스트가 진화 사슬 매핑을
     /// 검증하는 데 쓴다. 진화형이 기본형보다 적은 펫은 마지막 진화형에 머문다(캡).
-    static func displaySlugForTest(base: String, stage: Int) -> String {
+    /// 이브이는 분기라 고정 사슬 대신 `eeveeChoice`(고른 진화형)를 한 칸 사슬로 쓴다 —
+    /// 미선택이면 스테이지가 올라도 이브이를 유지(사용자가 말풍선에서 고를 때까지).
+    static func displaySlugForTest(base: String, stage: Int, eeveeChoice: String? = nil) -> String {
+        if base == "eevee" {
+            guard stage > 0, let forme = eeveeChoice else { return base }
+            return forme
+        }
         guard stage > 0, let chain = evolutionChains[base], !chain.isEmpty else { return base }
         let index = min(stage, chain.count) - 1
         return chain[index]
@@ -2019,6 +2087,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return fallback
         }
         return saved
+    }
+
+    // MARK: - Eevee 진화형 선택 persistence
+    // 분기 진화라 사용자가 고른 이브이 진화형을 저장한다. 성별처럼 **기본형(eevee) 기준**
+    // 한 번만 정하면 되므로(이브이는 하나뿐) 키 하나에 slug 만 담는다. 저장돼 있어야
+    // displaySlug 가 이브이를 그 진화형으로 그린다. 고른 적 없으면 nil = 이브이 유지.
+    private static let eeveeChoiceDefaultsKey = "eeveelutionChoice"
+
+    static func savedEeveeChoice() -> String? {
+        guard let s = UserDefaults.standard.string(forKey: eeveeChoiceDefaultsKey),
+              eeveelutionSlugs.contains(s) else { return nil }
+        return s
+    }
+
+    static func saveEeveeChoice(_ slug: String) {
+        UserDefaults.standard.set(slug, forKey: eeveeChoiceDefaultsKey)
     }
 
     // MARK: - Selected status-source persistence

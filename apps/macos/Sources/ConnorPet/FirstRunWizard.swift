@@ -245,6 +245,119 @@ private final class FirstRunWizardController: NSObject {
     }
 }
 
+extension FirstRunWizard {
+    /// 이브이 분기 진화 선택창. 2억 토큰 도달 시 말풍선을 누르면 뜨는, **온보딩과 같은
+    /// 다크 카드 + 썸네일 그리드**의 단일 페이지 모달. 고른 slug 를 돌려주고, 취소(Esc)면
+    /// nil. 썸네일은 각 진화형 idle 첫 프레임(PetOption.image)을 그대로 쓴다.
+    static func chooseEeveelution(options: [PetOption]) -> String? {
+        EeveelutionChooserController(options: options).runModal()
+    }
+
+    /// 디버그: 선택창을 오프스크린 PNG 로 덤프(CONNORPET_DEBUG_EEVEE).
+    static func debugRenderEeveelution(options: [PetOption], to path: String) {
+        EeveelutionChooserController(options: options).debugRenderPNG(to: path)
+    }
+}
+
+private final class EeveelutionChooserController: NSObject {
+    private let options: [FirstRunWizard.PetOption]
+    private var panel: NSPanel?
+    private var chosen: String?
+    private let cols = 4
+    private let cell = NSSize(width: 96, height: 100)
+    private let pad: CGFloat = 24
+    private let titleH: CGFloat = 52   // 제목 + 부제
+
+    init(options: [FirstRunWizard.PetOption]) { self.options = options }
+
+    private func pageSize() -> NSSize {
+        let rows = max(1, Int(ceil(Double(options.count) / Double(cols))))
+        let width = pad * 2 + cell.width * CGFloat(cols)
+        let height = pad + titleH + CGFloat(rows) * cell.height + pad
+        return NSSize(width: width, height: height)
+    }
+
+    private func buildCard(size: NSSize) -> CardView {
+        let card = CardView(frame: NSRect(origin: .zero, size: size))
+        card.addSubview(title("이브이가 진화할 준비가 됐어요!", size: size, y: size.height - pad - 26,
+                              font: .systemFont(ofSize: 18, weight: .bold), color: .white))
+        card.addSubview(title("8종 중 하나를 골라줘 — 고른 모습으로 자라나요", size: size, y: size.height - pad - 46,
+                              font: .systemFont(ofSize: 11, weight: .medium),
+                              color: NSColor(calibratedWhite: 0.6, alpha: 1)))
+
+        let top = size.height - pad - titleH
+        for (i, opt) in options.enumerated() {
+            let col = i % cols, row = i / cols
+            let x = pad + CGFloat(col) * cell.width
+            let by = top - CGFloat(row + 1) * cell.height
+            let button = WizardButton(frame: NSRect(x: x, y: by, width: cell.width, height: cell.height))
+            button.configureCell(image: opt.image, title: opt.name)
+            button.tag = i
+            button.target = self
+            button.action = #selector(pick(_:))
+            card.addSubview(button)
+        }
+        return card
+    }
+
+    /// 오프스크린 PNG 덤프(CONNORPET_DEBUG_EEVEE) — 레이아웃 확인/아티팩트용.
+    func debugRenderPNG(to path: String) {
+        let size = pageSize()
+        let card = buildCard(size: size)
+        guard let rep = card.bitmapImageRepForCachingDisplay(in: card.bounds) else { return }
+        card.cacheDisplay(in: card.bounds, to: rep)
+        try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+    }
+
+    func runModal() -> String? {
+        let size = pageSize()
+
+        let panel = WizardPanel(
+            contentRect: NSRect(origin: .zero, size: size),
+            styleMask: [.borderless], backing: .buffered, defer: false
+        )
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = true
+        panel.level = .modalPanel
+        panel.isMovableByWindowBackground = true
+        self.panel = panel
+
+        let card = buildCard(size: size)
+        let esc = NSButton(frame: .zero)
+        esc.isTransparent = true
+        esc.keyEquivalent = "\u{1b}"
+        esc.target = self
+        esc.action = #selector(cancel)
+        card.addSubview(esc)
+
+        panel.contentView = card
+        panel.center()
+        NSApp.activate(ignoringOtherApps: true)
+        panel.makeKeyAndOrderFront(nil)
+        _ = NSApp.runModal(for: panel)
+        panel.orderOut(nil)
+        self.panel = nil
+        return chosen
+    }
+
+    private func title(_ text: String, size: NSSize, y: CGFloat, font: NSFont, color: NSColor) -> NSTextField {
+        let label = NSTextField(labelWithString: text)
+        label.font = font
+        label.textColor = color
+        label.alignment = .center
+        label.frame = NSRect(x: 16, y: y, width: size.width - 32, height: 24)
+        return label
+    }
+
+    @objc private func pick(_ sender: NSButton) {
+        chosen = options[sender.tag].slug
+        NSApp.stopModal()
+    }
+
+    @objc private func cancel() { NSApp.stopModal() }
+}
+
 /// The dark rounded card behind a wizard page.
 private final class CardView: NSView {
     override init(frame frameRect: NSRect) {

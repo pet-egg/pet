@@ -57,7 +57,7 @@ mac 앱(Swift, `apps/macos`)과 windows 앱(Python, `apps/windows`)은 **코드�
 - 경험치 바 = 다음 임계치까지의 비율(0~1), 최종 단계면 가득.
 - **EXP 눈금·진화보너스는 진화 수와 무관하다.** 임계치(2억/5억)와 만렙(5억), 그리고
   대전 진화보너스(stage 0·1·2 → ×1.0·1.15·1.30, 정규화 후 최대 파워 1.0)는 **펫을
-  인자로 받지 않고 토큰·stage 만 본다**. 따라서 진화가 없거나(ditto·togepi) 1진화만
+  인자로 받지 않고 토큰·stage 만 본다**. 따라서 진화가 없거나(ditto) 1진화만
   있는 펫(eevee·munchlax·diglett)도 **똑같이 최대경험치(5억)까지 쌓고, stage 2 에서
   +30% 보너스를 받는다**. 스프라이트만 마지막 진화형에서 멈출 뿐(캡), 눈금·보너스는
   2진화 펫과 동일하다. 회귀 방지: `CONNORPET_SELFTEST=evolution`.
@@ -67,10 +67,22 @@ mac 앱(Swift, `apps/macos`)과 windows 앱(Python, `apps/windows`)은 **코드�
 `totodile→croconaw→feraligatr`, `charmander→charmeleon→charizard`,
 `squirtle→wartortle→blastoise`, `geodude→graveler→golem`,
 `chikorita→bayleef→meganium`, `torchic→combusken→blaziken`,
-`eevee→vaporeon`, `diglett→dugtrio`, `pichu→pikachu→raichu`,
+`diglett→dugtrio`, `pichu→pikachu→raichu`,
 `gastly→haunter→gengar`, `munchlax→snorlax`, `tepig→pignite→emboar`,
+`togepi→togetic→togekiss`,
 `larvitar→pupitar→tyranitar`, `dratini→dragonair→dragonite`.
-`ditto`/`togepi`/`bichon`/`pinkbean` 은 진화 없음.
+`ditto`/`bichon`/`pinkbean` 은 진화 없음.
+
+### 이브이 분기 진화 (사용자 선택)
+이브이는 진화형이 8종(`vaporeon`·`jolteon`·`flareon`·`espeon`·`umbreon`·`leafeon`·
+`glaceon`·`sylveon`)이라 **고정 사슬이 없다**. 대신:
+- **stage 1(2억 토큰)에 도달하고 아직 진화형을 안 고른 상태**면 펫 위에 클릭-가능
+  "✨ 진화!" 말풍선(win: 트레이 풍선)을 띄운다. 누르면 **온보딩식 8종 선택 그리드**가 뜬다.
+- 고른 진화형은 **기본형(`eevee`) 기준으로 저장**(성별과 같은 규칙 — 경험치와 별개 키).
+  저장되면 `display_slug(eevee, stage≥1)` 이 그 진화형을 그린다. 미선택이면 스테이지가
+  올라도 이브이를 유지한다.
+- 진화형은 모두 **1단계**로 취급(대전 파워 역매핑 포함). stage·눈금·보너스는 다른 펫과 동일.
+- 선택은 메뉴/설정에서 언제든 바꿀 수 있다(진화는 이브이에게 영구 고정이 아니다).
 
 ## 성별 (gender)
 - **부화(처음 키우기 시작) 시 확률로 한 번만** 정하고, 그 뒤로는 바뀌지 않는다.

@@ -116,7 +116,15 @@ def test_display_slug():
     assert petmeta.display_slug("totodile", 2) == "feraligatr"
     assert petmeta.display_slug("totodile", 5) == "feraligatr"  # clamp
     assert petmeta.display_slug("ditto", 2) == "ditto"          # 진화 없음
-    assert petmeta.display_slug("eevee", 2) == "vaporeon"       # 1단계뿐 → clamp
+    assert petmeta.display_slug("togepi", 1) == "togetic"       # 토게피 사슬
+    assert petmeta.display_slug("togepi", 2) == "togekiss"
+    # 이브이 분기: 미선택이면 스테이지가 올라도 이브이, 고르면 그 진화형
+    assert petmeta.display_slug("eevee", 2) == "eevee"
+    assert petmeta.display_slug("eevee", 2, None) == "eevee"
+    assert petmeta.display_slug("eevee", 1, "jolteon") == "jolteon"
+    assert petmeta.display_slug("eevee", 0, "jolteon") == "eevee"   # stage 0 이면 이브이
+    for forme in petmeta.EEVEELUTION_SLUGS:
+        assert petmeta.display_slug("eevee", 1, forme) == forme
 
 
 # ── 토큰 accrual ───────────────────────────────────────────────

@@ -35,6 +35,10 @@ final class ChallengeBubbleWindow: NSPanel {
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
 
+    /// 말풍선 글자. 기본은 "Challenge"(대전 신청). 이브이 진화 알림 등 다른 용도로
+    /// 재사용할 때 바꾼다. show() 전에 설정하면 크기가 글자에 맞게 다시 잡힌다.
+    func setText(_ text: String) { bubble.text = text }
+
     /// 눌렀을 때. 한 번만 불리고 말풍선은 스스로 사라진다.
     var onClick: (() -> Void)? {
         get { bubble.onClick }
@@ -92,7 +96,7 @@ private final class ChallengeBubbleView: NSView {
     static let cornerRadius: CGFloat = 10
     private static let padding = NSEdgeInsets(top: 7, left: 13, bottom: 7, right: 13)
     private static let font = NSFont.systemFont(ofSize: 13, weight: .semibold)
-    private static let text = "Challenge"
+    var text = "Challenge" { didSet { needsDisplay = true } }
 
     var onClick: (() -> Void)?
 
@@ -100,7 +104,7 @@ private final class ChallengeBubbleView: NSView {
 
     /// 글자에 맞춘 말풍선 전체 크기(꼬리 포함).
     func fittingSize() -> NSSize {
-        let textSize = (Self.text as NSString).size(withAttributes: [.font: Self.font])
+        let textSize = (text as NSString).size(withAttributes: [.font: Self.font])
         let w = ceil(textSize.width) + Self.padding.left + Self.padding.right
         let h = ceil(textSize.height) + Self.padding.top + Self.padding.bottom + Self.tailHeight
         return NSSize(width: w, height: h)
@@ -130,7 +134,7 @@ private final class ChallengeBubbleView: NSView {
             .font: Self.font,
             .foregroundColor: NSColor(calibratedWhite: 0.12, alpha: 1),
         ]
-        let s = Self.text as NSString
+        let s = text as NSString
         let size = s.size(withAttributes: attrs)
         s.draw(at: NSPoint(x: (bounds.width - size.width) / 2, y: Self.padding.top), withAttributes: attrs)
     }
